@@ -35,6 +35,13 @@ const THROW_LIFETIME := 0.65
 const THROW_HIT_RADIUS := 14.0
 const DOOR_STUN_RANGE := 48.0
 const DOOR_INTERACT_DISTANCE := 45.0
+const WALL_THICKNESS := 8.0 # Native wall artwork thickness, independent of 28px cells.
+
+# EDITOR APPEARANCE
+const EDITOR_CANVAS_COLOR := Color("10222a")
+const EDITOR_GRID_COLOR := Color("26414b")
+const EDITOR_PANEL_COLOR := Color("35213e")
+const EDITOR_NEON_COLOR := Color("e4489c")
 
 # ENEMIES
 const ENEMY_HEALTH := 1
@@ -104,5 +111,18 @@ const MAX_MAP_OBJECTS := 2000
 const OBJECT_SNAP_SIZE := 7.0
 const OBJECT_ROTATION_STEP := 15.0
 const OBJECT_ANIMATION_FPS := 12.0
+const PLACEMENT_PREVIEW_COLOR := Color(0.45, 1.0, 0.55, 0.6)
+const PLACEMENT_OUTLINE_COLOR := Color(0.35, 1.0, 0.45, 0.95)
+const FLOOR_STAMP_SCALE_STEP := 0.25 # Mouse wheel size increment for tiles/layouts.
 const FLOOR_PLAN_DEFAULT_SCALE := 4.0 # Enlarge miniature map-section artwork.
 const FLOOR_PLAN_TARGET_SIZE := 448.0 # Keep already-large floor-plan images at native size.
+
+# Native art proportions: couch 48px, bed 50x60px, table 50x30px.
+const PROP_SCALE_OVERRIDES := {
+ "Furniture/sprSofaH48_strip2.png": 1.0,
+ "Furniture/sprAndersTable.png": 1.0,
+ "Furniture/sprAndersBed.png": 1.0,
+ "Furniture/sprAndersDesk_strip6.png": 1.0,
+ "Furniture/sprAndersDrawer.png": 0.4,
+}
+const DOOR_LEAF_THICKNESS := 4.0

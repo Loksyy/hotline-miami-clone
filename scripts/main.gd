@@ -37,9 +37,10 @@ var shake := 0.0
 var swing := 0.0
 var aim := 0.0
 var hud: Label
-var map: Dictionary = Maps.demo()
+var map: Dictionary = Maps.starter()
 var editing := true
 var brush := 2
+var layout_tool := "paint"
 var player := Vector2.ZERO
 var enemies: Array = []
 var dead := false
@@ -91,8 +92,8 @@ func button_at(text: String, position: Vector2, action: Callable, width: float =
 	return button
 
 func build_ui() -> void:
-	label_at("PROJECT GAGUGAGA", Vector2(32, 18), 30).modulate = Color("fc65ac")
 	mode_label = label_at("FLOOR DESIGNER", Vector2(420, 30), 18)
+	mode_label.hide()
 	hud = label_at("AFTER HOURS / 1989   •   DESIGN YOUR WAY IN", Vector2(32, 66), 17)
 	title_input = LineEdit.new()
 	title_input.text = map.name
@@ -111,6 +112,10 @@ func build_ui() -> void:
 
 func select_brush(index: int) -> void:
 	if workshop != null: workshop.mode = "terrain"
+	painting = false
+	rectangle_mode = false
+	if index not in [1, 7, 8] and layout_tool in ["room", "fill"]: layout_tool = "paint"
+	if index != 2 and layout_tool == "outline": layout_tool = "paint"
 	brush = index
 	if status != null:
 		var hints := ["Void: drag to remove floor.", "Carpet: drag to paint. Shift+drag fills a room.", "Wall: drag to build connected walls. Shift+drag fills a rectangle.", "Spawn: click a floor to move the player start.", "Enemy: click an empty floor to add an enemy.", "Exit: click a floor to move the exit.", "Erase: removes enemies or replaces terrain with floor.", "Wood: drag to paint. Shift+drag fills a room.", "Tile: drag to paint. Shift+drag fills a room.", "Door: replace one wall cell; orientation follows neighboring walls.", "Sofa: adjacent cells combine into a couch."]
@@ -345,10 +350,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		throw_weapon()
 	if editing and event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
 		if event.pressed and MAP_VIEW.has_point(event.position) and inside(mouse_cell()):
+			if event.button_index == MOUSE_BUTTON_LEFT and layout_tool == "sample":
+				var tile: int = map.cells[mouse_cell().y * Maps.WIDTH + mouse_cell().x]
+				select_brush(tile if tile <= 2 else tile + 4)
+				layout_tool = "paint"
+				return
+			if event.button_index == MOUSE_BUTTON_LEFT and layout_tool == "fill":
+				fill_area(mouse_cell())
+				return
 			snapshot()
 			painting = true
 			last_cell = mouse_cell()
-			rectangle_mode = event.shift_pressed and (brush <= 2 or brush >= 7) and event.button_index == MOUSE_BUTTON_LEFT
+			rectangle_mode = (event.shift_pressed or layout_tool in ["room", "outline"]) and (brush <= 2 or brush >= 7) and event.button_index == MOUSE_BUTTON_LEFT
 			rectangle_start = last_cell
 			if not rectangle_mode: paint(last_cell, event.button_index == MOUSE_BUTTON_RIGHT)
 
@@ -357,15 +370,43 @@ func solid(point: Vector2) -> bool:
 	if not inside(cell): return true
 	if workshop != null and workshop.is_solid(point): return true
 	var tile: int = map.cells[cell.y * Maps.WIDTH + cell.x]
+	if tile == 2:
+		for segment in wall_segments(cell):
+			if segment.has_point(point): return true
+		return false
+	if tile == 5:
+		if open_doors.has(cell): return false
+		return door_leaf_rect(cell).has_point(point)
 	return not Maps.floor_tile(tile) and not (tile == 5 and open_doors.has(cell))
 
+func fill_area(start: Vector2i) -> void:
+	var replacement := brush if brush <= 2 else brush - 4
+	if not Maps.floor_tile(replacement) or not inside(start):
+		status.text = "Fill: select carpet, wood, or tile first."
+		return
+	var original: int = map.cells[start.y * Maps.WIDTH + start.x]
+	if original == replacement or not Maps.floor_tile(original): return
+	snapshot()
+	var pending: Array[Vector2i] = [start]
+	var visited: Dictionary = {}
+	while not pending.is_empty():
+		var cell: Vector2i = pending.pop_back()
+		if not inside(cell) or visited.has(cell): continue
+		visited[cell] = true
+		if map.cells[cell.y * Maps.WIDTH + cell.x] != original: continue
+		map.cells[cell.y * Maps.WIDTH + cell.x] = replacement
+		for offset in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]: pending.append(cell + offset)
+	status.text = "Room floor replaced. Ctrl+Z undoes the fill."
+	queue_redraw()
+
 func can_stand(point: Vector2) -> bool:
-	for offset in [Vector2(-8, -8), Vector2(8, -8), Vector2(-8, 8), Vector2(8, 8)]:
-		if solid(point + offset.normalized() * S.PLAYER_COLLISION_RADIUS * sqrt(2)): return false
+	# Include center and edge midpoints: corners alone miss thin walls/doors.
+	for offset in [Vector2.ZERO, Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN, Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		if solid(point + offset * S.PLAYER_COLLISION_RADIUS): return false
 	return true
 
 func move_actor(position: Vector2, velocity: Vector2) -> Vector2:
-	var steps := maxi(1, int(ceil(velocity.length() / 5.0)))
+	var steps := maxi(1, int(ceil(velocity.length() / 2.0)))
 	var step := velocity / steps
 	for i in steps:
 		if can_stand(position + Vector2(step.x, 0)): position.x += step.x
@@ -426,13 +467,20 @@ func _process(delta: float) -> void:
 	particles = particles.filter(func(p): return p.life > 0)
 	if editing:
 		hud.text = "FLOOR DESIGNER   /   %d ENEMIES   /   %s" % [map.enemies.size(), "%d%% ZOOM | WHEEL + MIDDLE MOUSE" % int(editor_zoom * 100)]
+		if dialog.visible:
+			painting = false
+			rectangle_mode = false
 		if painting:
 			if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 				if rectangle_mode:
 					var end := mouse_cell().clamp(Vector2i.ZERO, Vector2i(Maps.WIDTH - 1, Maps.HEIGHT - 1))
 					for y in range(mini(rectangle_start.y, end.y), maxi(rectangle_start.y, end.y) + 1):
 						for x in range(mini(rectangle_start.x, end.x), maxi(rectangle_start.x, end.x) + 1):
-							paint(Vector2i(x, y), false)
+							var edge := x in [mini(rectangle_start.x, end.x), maxi(rectangle_start.x, end.x)] or y in [mini(rectangle_start.y, end.y), maxi(rectangle_start.y, end.y)]
+							var saved_brush := brush
+							if layout_tool in ["room", "outline"] and edge: brush = 2
+							if layout_tool != "outline" or edge: paint(Vector2i(x, y), false)
+							brush = saved_brush
 				rectangle_mode = false
 				painting = false
 			elif not rectangle_mode and MAP_VIEW.has_point(get_global_mouse_position()) and mouse_cell() != last_cell:
@@ -562,7 +610,7 @@ func use_door(position: Vector2, kick: bool) -> void:
 	if target.x < 0: return
 	if open_doors.has(target):
 		# Never close a door on an actor standing in its opening.
-		var opening := Rect2(Vector2(target) * SIZE, Vector2.ONE * SIZE).grow(S.PLAYER_COLLISION_RADIUS)
+		var opening := door_leaf_rect(target).grow(S.PLAYER_COLLISION_RADIUS + 0.5)
 		if opening.has_point(player): return
 		for enemy in enemies:
 			if enemy.alive and opening.has_point(enemy.pos): return
@@ -576,6 +624,13 @@ func use_door(position: Vector2, kick: bool) -> void:
 					enemy.stun = S.STUN_DURATION
 	sound.play("door")
 
+func door_leaf_rect(cell: Vector2i) -> Rect2:
+	var origin := Vector2(cell) * SIZE
+	var thickness: float = S.DOOR_LEAF_THICKNESS
+	if door_is_vertical(cell):
+		return Rect2(origin + Vector2((SIZE - thickness) / 2.0, 0), Vector2(thickness, SIZE))
+	return Rect2(origin + Vector2(0, (SIZE - thickness) / 2.0), Vector2(SIZE, thickness))
+
 func door_is_vertical(cell: Vector2i) -> bool:
 	return wall_at(cell + Vector2i.UP) or wall_at(cell + Vector2i.DOWN)
 
@@ -588,9 +643,7 @@ func draw_door(cell: Vector2i) -> void:
 	if opened: angle -= PI / 2
 	# Full door texture and matching orientation span the actual doorway.
 	sprite("door", hinge, angle, SIZE / 32.0, 0, Vector2(0, 2))
-	draw_circle(hinge, 2.5, Color("ffe2a8"))
-	if editing:
-		draw_arc(hinge, SIZE - 2, -PI / 2 if not vertical else 0.0, 0.0 if not vertical else PI / 2, 12, Color(1, 0.85, 0.5, 0.45), 1)
+
 func melee() -> void:
 	if reload_remaining > 0: return
 	cooldown = S.MELEE_INTERVAL
@@ -757,19 +810,28 @@ func draw_floor(rectangle: Rect2, tile: int) -> void:
 func wall_at(cell: Vector2i) -> bool:
 	return inside(cell) and map.cells[cell.y * Maps.WIDTH + cell.x] == 2
 
-func draw_wall(rectangle: Rect2, cell: Vector2i) -> void:
-	var horizontal := wall_at(cell + Vector2i.LEFT) or wall_at(cell + Vector2i.RIGHT)
-	var vertical := wall_at(cell + Vector2i.UP) or wall_at(cell + Vector2i.DOWN)
-	# Keep the complete supplied wall sprite, including its edge detailing.
-	draw_texture_rect(art.frame("wall_v" if vertical and not horizontal else "wall"), rectangle, false)
-	if horizontal and vertical:
-		draw_rect(rectangle.grow(-5), Color("ddd4b0"))
-	var p := rectangle.position
-	var e := rectangle.end
-	if not wall_at(cell + Vector2i.UP): draw_line(p, Vector2(e.x, p.y), Color("eee2c5"), 1)
-	if not wall_at(cell + Vector2i.DOWN): draw_line(Vector2(p.x, e.y), e, Color("665941"), 2)
-	if not wall_at(cell + Vector2i.LEFT): draw_line(p, Vector2(p.x, e.y), Color("eee2c5"), 1)
-	if not wall_at(cell + Vector2i.RIGHT): draw_line(Vector2(e.x, p.y), e, Color("665941"), 2)
+func wall_connects(cell: Vector2i) -> bool:
+	return inside(cell) and map.cells[cell.y * Maps.WIDTH + cell.x] in [2, 5]
+
+func wall_segments(cell: Vector2i) -> Array[Rect2]:
+	var thickness := clampf(S.WALL_THICKNESS, 2, SIZE)
+	var half := thickness / 2
+	var midpoint := Vector2(cell) * SIZE + Vector2.ONE * SIZE / 2
+	var segments: Array[Rect2] = []
+	for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		if not wall_connects(cell + direction): continue
+		var endpoint := midpoint + Vector2(direction) * SIZE / 2
+		var low := midpoint.min(endpoint) - Vector2.ONE * half
+		var high := midpoint.max(endpoint) + Vector2.ONE * half
+		segments.append(Rect2(low, high - low).intersection(Rect2(Vector2(cell) * SIZE, Vector2.ONE * SIZE)))
+	if segments.is_empty():
+		segments.append(Rect2(midpoint - Vector2(SIZE / 2.0, half), Vector2(SIZE, thickness)))
+	return segments
+
+func draw_wall(_rectangle: Rect2, cell: Vector2i) -> void:
+	for segment in wall_segments(cell):
+		var key := "wall_v" if segment.size.y > segment.size.x else "wall"
+		draw_texture_rect(art.frame(key), segment, false)
 func draw_furniture() -> void:
 	# Adjacent sofa cells form one piece of furniture rather than tiny repeated couches.
 	var used: Dictionary = {}
@@ -785,10 +847,18 @@ func draw_furniture() -> void:
 			draw_rect(Rect2(rectangle.position + Vector2(2, 3), rectangle.size), Color(0, 0, 0, 0.4))
 			draw_texture_rect(art.frame("sofa"), rectangle, false)
 func _draw() -> void:
+	draw_rect(Rect2(0, 0, 1280, 1080), S.EDITOR_CANVAS_COLOR)
 	draw_rect(Rect2(1280, 0, 640, 1080), Color("101725"))
 	var jitter := Vector2(randf_range(-shake, shake), randf_range(-shake, shake)) * S.SCREEN_SHAKE_SCALE if not editing else Vector2.ZERO
 	view_zoom = camera_zoom()
 	render_origin = MAP_VIEW.get_center() - camera_center() * view_zoom + jitter
+	if editing:
+		var spacing := SIZE * view_zoom
+		var offset := Vector2(fposmod(render_origin.x, spacing), fposmod(render_origin.y, spacing))
+		for x in range(int(1280 / spacing) + 2):
+			draw_line(Vector2(offset.x + x * spacing, 0), Vector2(offset.x + x * spacing, 1080), S.EDITOR_GRID_COLOR, 1)
+		for y in range(int(1080 / spacing) + 2):
+			draw_line(Vector2(0, offset.y + y * spacing), Vector2(1280, offset.y + y * spacing), S.EDITOR_GRID_COLOR, 1)
 	draw_rect(MAP_VIEW.grow(2), Color("e44a9c"), false, 2)
 	draw_set_transform(render_origin, 0, Vector2.ONE * view_zoom)
 	for y in Maps.HEIGHT:
@@ -796,9 +866,9 @@ func _draw() -> void:
 			var tile: int = map.cells[y * Maps.WIDTH + x]
 			var rectangle := Rect2(Vector2(x, y) * SIZE, Vector2.ONE * SIZE)
 			if tile == 0:
-				draw_rect(rectangle, Color("0a0e19"))
+				if not editing: draw_rect(rectangle, S.EDITOR_CANVAS_COLOR)
 			elif tile == 2:
-				draw_wall(rectangle, Vector2i(x, y))
+				draw_floor(rectangle, 1)
 			else:
 				draw_floor(rectangle, tile if tile in [1, 3, 4] else 1)
 			if editing and show_grid: draw_rect(rectangle, Color(0.6, 0.7, 0.9, 0.12), false)
@@ -860,3 +930,13 @@ func _draw() -> void:
 	draw_rect(Rect2(MAP_VIEW.end.x, MAP_VIEW.position.y, 32, MAP_VIEW.size.y), Color("090a12"))
 	draw_rect(Rect2(1280, 0, 640, 1080), Color("101725"))
 	draw_rect(MAP_VIEW.grow(2), Color("e44a9c"), false, 2)
+	if editing:
+		for band in 3:
+			var top := PackedVector2Array()
+			var bottom := PackedVector2Array()
+			for x in range(0, 1281, 8):
+				var wave := sin(float(x) * 0.018 + band * 0.65) * 5
+				top.append(Vector2(x, 94 + wave + band * 3))
+				bottom.append(Vector2(x, 1064 + wave + band * 3))
+			draw_polyline(top, S.EDITOR_NEON_COLOR.darkened(band * 0.17), 2)
+			draw_polyline(bottom, S.EDITOR_NEON_COLOR.darkened(band * 0.17), 2)

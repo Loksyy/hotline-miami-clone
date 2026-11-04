@@ -28,6 +28,14 @@ func run() -> void:
 	var game := Game.new()
 	root.add_child(game)
 	game.sound.muted = true
+	check(Maps.validate(game.map) == "", "New starter apartment validates")
+	check(game.map.objects[1].scale == 1.0 and game.map.objects[3].scale == 1.0, "Starter couch and bed use native proportions")
+	game.check_routes()
+	check(game.status.text.begins_with("Routes checked"), "Starter apartment enemies and exit are reachable")
+	for i in game.map.objects.size():
+		var prop: Dictionary = game.map.objects[i]
+		check(game.workshop.hit_test(Vector2(prop.pos[0], prop.pos[1])) == i, "Starter furniture and layout are selectable")
+	game.replace_map(Maps.demo())
 	var screen_point := Vector2(310, 275)
 	var anchored_world := game.screen_to_world(screen_point)
 	game.zoom_at(screen_point, 1.5)
@@ -53,7 +61,7 @@ func run() -> void:
 	game.toggle_mode()
 	check(game.map == original, "Playtesting must preserve layout")
 	check(game.enemies[0].alive, "Restart must reset enemies")
-	check(game.move_actor(Vector2(42, 42), Vector2(-100, 0)).x >= 36, "Collision prevents wall tunneling")
+	check(game.move_actor(Vector2(42, 42), Vector2(-100, 0)).x >= 14 + game.S.WALL_THICKNESS / 2 + game.S.PLAYER_COLLISION_RADIUS, "Collision prevents thin-wall tunneling")
 	check(not game.visible_between(Vector2(290, 100), Vector2(350, 100)), "Walls block sight")
 	game.file_action = "save"
 	game.on_file_selected("user://smoke_map.json")
@@ -135,7 +143,7 @@ func run() -> void:
 	# The entire supplied library is catalogued; strip frames remain separately selectable.
 	check(game.workshop.catalog.size() == 1431, "All supplied PNGs are catalogued")
 	check(game.workshop.window is PanelContainer, "Asset library is an embedded dock")
-	check(game.workshop.window.position == Vector2(1280, 0), "Asset dock occupies right side of 1080p layout")
+	check(game.workshop.window.position == Vector2(1280, 108), "Asset dock leaves room for top toolbar")
 	check(ProjectSettings.get_setting("display/window/size/viewport_width") == 1920 and ProjectSettings.get_setting("display/window/size/viewport_height") == 1080, "Game uses a 1920 by 1080 viewport")
 	for entry in game.workshop.catalog:
 		check(ResourceLoader.exists(game.workshop.ROOT + entry.path), "Catalog asset exists: " + entry.path)
@@ -185,9 +193,10 @@ func run() -> void:
 	check(game.workshop.contains(game.map.objects[-1], Vector2(490, 350)), "Room surface has independent dimensions")
 	check(game.workshop.texture_for("Floor tiles/bacground0.png", 0, [0, 112, 16, 16]).get_size() == Vector2(16, 16), "Atlas crop selects individual floor material")
 	check(Maps.validate(game.map) == "", "Room surface map validates")
-	check(game.workshop.tabs.get_tab_count() == 3, "Editor groups tools into three dock tabs")
-	check(game.workshop.window.is_ancestor_of(game.toggle_button) and game.workshop.window.is_ancestor_of(game.title_input), "Map name and playtest controls live in right dock")
-	for tool in game.palette: check(game.workshop.window.is_ancestor_of(tool), "Terrain tools live in right dock")
+	check(game.workshop.tabs.get_tab_count() == 1, "Editor has only Build and Items tabs")
+	check(not game.workshop.tabs.tabs_visible, "Simplified tabs remain in expected order")
+	check(game.workshop.get_node("TopBar").is_ancestor_of(game.toggle_button) and game.workshop.get_node("TopBar").is_ancestor_of(game.title_input), "Map name and playtest controls live in top bar")
+	for tool in game.palette: check(game.workshop.is_ancestor_of(tool), "Terrain tools live in right dock")
 	game.workshop.mode = "terrain"
 	game.workshop.choose("Floor Plans/sprApartment1_strip16.png")
 	check(game.workshop.mode == "stamp", "Thumbnail click immediately enables placement")
@@ -215,12 +224,135 @@ func run() -> void:
 	game.player = game.center([11, 5])
 	game.use_door(game.player, true)
 	check(game.open_doors.has(Vector2i(11, 5)), "Occupied doorway cannot close on player")
+	game.player = game.center([11, 5]) + Vector2(20, 0)
+	game.use_door(game.player, true)
+	check(not game.open_doors.has(Vector2i(11, 5)), "Door closes immediately when nearby player is clear of leaf")
+	check(not game.can_stand(game.center([11, 5])), "Actor center cannot straddle closed thin door")
 	game.reset_game()
 	check(game.open_doors.is_empty(), "Restart closes all doors")
 	game.toggle_mode()
 	game.paint(Vector2i(11, 5), true)
 	check(game.map.cells[5 * Maps.WIDTH + 11] == 1, "Terrain erase restores floor")
-	game.queue_free()
+	game.workshop.show_atlas_tiles()
+	check(game.workshop.filtered.size() == game.workshop.atlas_tiles.size() and game.workshop.atlas_tiles.size() > 100, "Atlas category exposes non-empty cells")
+	var atlas_entry: Dictionary = game.workshop.atlas_tiles[0]
+	game.workshop.choose_tile(atlas_entry)
+	check(game.workshop.draft.crop == atlas_entry.crop and game.workshop.draft.layer == 0, "Atlas tile selects its crop on the floor layer")
+	check(game.workshop.preview.texture.get_size() == Vector2(16, 16), "Atlas preview shows one tile")
+	print("Atlas tiles available: %d" % game.workshop.atlas_tiles.size())
+	game.workshop.show_room_layouts()
+	check(game.workshop.filtered.size() == game.workshop.room_layouts.size() and game.workshop.filtered.size() > 100, "Room-layout browser exposes individual frames")
+	var layout: Dictionary = game.workshop.room_layouts[1]
+	game.workshop.choose_entry(layout)
+	check(game.workshop.draft.frame == layout.frame and game.workshop.draft.layer == 0, "Room layout selects exact frame on floor layer")
+	game.replace_map(Maps.demo())
+	check(game.solid(Vector2(11 * 28 + 14, 3 * 28 + 14)), "Thin wall center blocks")
+	check(not game.solid(Vector2(11 * 28 + 2, 3 * 28 + 14)), "Visible floor beside thin wall is walkable")
+	check(game.wall_segments(Vector2i(11, 3))[0].size.x == game.S.WALL_THICKNESS, "Vertical wall uses configured native thickness")
+	print("Room layouts available: %d" % game.workshop.room_layouts.size())
+	game.replace_map(Maps.demo())
+	game.select_brush(8)
+	game.fill_area(Vector2i(3, 11))
+	check(game.map.cells[11 * Maps.WIDTH + 3] == 4, "Fill changes connected room floor")
+	check(game.map.cells[14 * Maps.WIDTH + 17] == 1, "Fill does not cross walls or closed door tiles")
+	game.undo()
+	check(game.map.cells[11 * Maps.WIDTH + 3] == 3, "Room fill is one undoable edit")
+	game.layout_tool = "fill"
+	game.select_brush(9)
+	check(game.layout_tool == "paint", "Door selection leaves floor-only fill tool")
+	game.workshop.choose("Furniture/sprSofaH48_strip2.png")
+	game.workshop.place(Vector2(448, 308))
+	var object_index: int = game.workshop.objects().size() - 1
+	var click := InputEventMouseButton.new()
+	click.position = game.MAP_VIEW.get_center() + (Vector2(game.workshop.objects()[object_index].pos[0], game.workshop.objects()[object_index].pos[1]) - game.editor_center) * game.editor_zoom
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.ctrl_pressed = true
+	game.workshop.mode = "terrain"
+	game.workshop.handle_event(click)
+	check(game.workshop.selected == object_index and game.workshop.mode == "select", "Ctrl-click grabs object from terrain mode using event coordinates")
+	check(game.workshop.draft.asset == game.workshop.objects()[object_index].asset, "Grab synchronizes inspector asset")
+	click.ctrl_pressed = false
+	click.shift_pressed = true
+	click.button_index = MOUSE_BUTTON_RIGHT
+	game.workshop.handle_event(click)
+	check(game.workshop.objects()[object_index].rotation == 90 and game.workshop.rotation_input.value == 90, "Shift-right-click rotates object and inspector together")
+	game.workshop.apply_selected()
+	check(game.workshop.objects()[object_index].rotation == 90, "Applying inspector preserves shortcut rotation")
+	game.workshop.clipboard = game.workshop.objects()[object_index].duplicate(true)
+	var paste := InputEventKey.new()
+	paste.pressed = true
+	paste.ctrl_pressed = true
+	paste.keycode = KEY_V
+	game.workshop.mode = "terrain"
+	game.workshop.handle_event(paste)
+	check(game.workshop.mode == "stamp" and game.workshop.draft.rotation == 90, "Paste works from terrain mode with synchronized properties")
+	var before_delete: int = game.workshop.objects().size()
+	click.shift_pressed = false
+	game.workshop.handle_event(click)
+	check(game.workshop.objects().size() == before_delete - 1, "Right-click erases object under pointer")
+	game.undo()
+	check(game.workshop.objects().size() == before_delete, "Object erasure is undoable")
+	game.workshop.choose_entry(layout)
+	var wheel := InputEventMouseButton.new()
+	game.workshop.rotate_active(90)
+	check(game.workshop.draft.rotation == 90 and game.workshop.rotation_input.value == 90, "Layout rotate button updates preview and properties")
+	game.workshop.place(Vector2(448, 308))
+	check(game.workshop.objects().back().rotation == 90, "Placed layout keeps preview rotation")
+	game.workshop.rotate_active(-90)
+	check(game.workshop.draft.rotation == 0, "Layout rotate left reverses right rotation")
+	wheel.position = game.MAP_VIEW.get_center()
+	wheel.pressed = true
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	var original_scale: float = game.workshop.draft.scale
+	var original_zoom: float = game.editor_zoom
+	check(game.workshop.handle_event(wheel), "Layout stamp consumes wheel for resizing")
+	check(is_equal_approx(game.workshop.draft.scale, original_scale + game.S.FLOOR_STAMP_SCALE_STEP), "Wheel increases layout preview size")
+	check(game.workshop.scale_input.value == game.workshop.draft.scale and game.editor_zoom == original_zoom, "Wheel resize synchronizes inspector without zooming")
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	game.workshop.handle_event(wheel)
+	check(is_equal_approx(game.workshop.draft.scale, original_scale), "Wheel down reduces layout size")
+	wheel.ctrl_pressed = true
+	check(not game.workshop.handle_event(wheel), "Ctrl-wheel passes through to camera zoom")
+	wheel.ctrl_pressed = false
+	game.workshop.choose_tile(atlas_entry)
+	check(is_equal_approx(game.workshop.draft.scale * 16, float(game.SIZE)), "Atlas tile matches terrain cell size")
+	check(game.workshop.position_for(Vector2(29, 29)) == Vector2(42, 42), "Tile preview snaps to terrain cell center")
+	game.workshop.place(Vector2(29, 29))
+	var tile_count: int = game.workshop.objects().size()
+	var history_count: int = game.history.size()
+	game.workshop.place(Vector2(30, 30))
+	check(game.workshop.objects().size() == tile_count and game.history.size() == history_count, "Repeated tile placement neither stacks nor adds undo entry")
+	game.workshop.choose_tile(game.workshop.atlas_tiles[1])
+	game.workshop.place(Vector2(30, 30))
+	check(game.workshop.objects().size() == tile_count, "Different tile replaces existing cell stamp")
+	check(game.workshop.handle_event(wheel), "Floor atlas tiles support wheel resizing")
+	game.workshop.choose("Furniture/sprSofaH48_strip2.png")
+	check(not game.workshop.handle_event(wheel), "Furniture wheel retains camera zoom")
+	root.size = Vector2i(1920, 1080)
+	game.workshop.tabs.current_tab = 0
 	await process_frame
+	await process_frame
+	check(game.workshop.window.get_global_rect().end.x <= 1920 and game.workshop.window.get_global_rect().end.y <= 1080, "Items dock fits within 1080p screen")
+	check(game.workshop.get_node("TopBar").get_global_rect().end.x <= 1920, "Top toolbar fits screen width")
+	game.workshop.show_library_page()
+	check(game.workshop.library_page.visible and not game.workshop.detail_page.visible, "Back restores library page")
+	game.workshop.choose_entry(layout)
+	check(game.workshop.detail_page.visible and not game.workshop.library_page.visible, "Choosing asset opens dedicated detail page")
+	await process_frame
+	await process_frame
+	check(game.workshop.window.get_global_rect().end.y <= 1080, "Expanded inspector remains inside screen")
+	var cancel := InputEventKey.new()
+	cancel.pressed = true
+	cancel.keycode = KEY_ESCAPE
+	game.workshop.handle_event(cancel)
+	game.workshop.update_mode()
+	check(game.workshop.mode == "select" and not game.painting, "Escape cancels placement safely into selection")
+	check(game.workshop.select_tool.button_pressed and not game.workshop.place_tool.button_pressed, "Toolbar highlights active selection tool")
+	check(game.workshop.select_tool.icon != null and game.workshop.place_tool.icon != null, "Primary tools have vector icons")
+	game.workshop.use_stamp()
+	game.workshop.update_mode()
+	check(game.workshop.place_tool.button_pressed and not game.workshop.select_tool.button_pressed, "Placement tool highlight follows mode")
+	game.queue_free()
 	print("Smoke checks completed: %d failures" % failures)
 	quit(1 if failures else 0)

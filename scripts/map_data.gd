@@ -38,6 +38,40 @@ static func demo() -> Dictionary:
 		map.cells[cell[1] * WIDTH + cell[0]] = 6
 	return map
 
+static func starter() -> Dictionary:
+	# Apartment layout: entry/living room, kitchen, bedroom and rear exit.
+	var map := blank()
+	map.name = "01 / NIGHT SHIFT APARTMENT"
+	for y in HEIGHT:
+		for x in WIDTH:
+			map.cells[y * WIDTH + x] = 0
+	for y in range(2, 20):
+		for x in range(3, 29):
+			var boundary := x in [3, 28] or y in [2, 19]
+			map.cells[y * WIDTH + x] = 2 if boundary else (4 if x >= 19 and y < 11 else 3)
+	for y in range(3, 19): map.cells[y * WIDTH + 18] = 2
+	for x in range(19, 28): map.cells[11 * WIDTH + x] = 2
+	for cell in [[18, 7], [18, 15], [24, 11]]: map.cells[cell[1] * WIDTH + cell[0]] = 5
+	map.spawn = [6, 15]
+	map.exit = [26, 17]
+	map.enemies = [[12, 5], [24, 5], [22, 16]]
+	# The source floor-plan is a miniature diagram: keep it as an editable
+	# planning reference beside the furnished rooms, rather than fake collision.
+	map.objects = [
+		prop("Floor Plans/sprApartment1_strip16.png", Vector2(448, 28), 1.0, 0, false, 8),
+		prop("Furniture/sprSofaH48_strip2.png", Vector2(252, 182), 1.0),
+		prop("Furniture/sprAndersTable.png", Vector2(280, 294), 1.0),
+		prop("Furniture/sprAndersBed.png", Vector2(700, 392), 1.0),
+		prop("Furniture/sprAndersDrawer.png", Vector2(762, 420), 0.4),
+		prop("Furniture/sprAndersDesk_strip6.png", Vector2(644, 168), 1.0)
+	]
+	return map
+
+static func prop(asset: String, position: Vector2, scale: float = 1.0, layer: int = 1, solid: bool = true, frame: int = 0) -> Dictionary:
+	return {"asset": asset, "pos": [position.x, position.y], "frame": frame,
+		"scale": S.PROP_SCALE_OVERRIDES.get(asset, scale), "rotation": 0.0, "layer": layer, "animated": false,
+		"solid": solid, "crop": [0, 0, 0, 0]}
+
 static func _valid_cell(value: Variant) -> bool:
 	if not value is Array or value.size() != 2:
 		return false

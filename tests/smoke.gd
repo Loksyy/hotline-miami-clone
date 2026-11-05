@@ -443,6 +443,23 @@ func run() -> void:
 	check(game.workshop.window.get_global_rect().end.y <= 1080, "Expanded construction tools stay within screen")
 	section_toggle.button_pressed = false
 	check(not game.workshop.construction_section.visible, "Construction section can close directly")
+	game.replace_map(Maps.blank())
+	var before_insert: Dictionary = game.map.duplicate(true)
+	var fragment := Maps.blank()
+	fragment.cells.fill(0)
+	for y in range(4, 7):
+		for x in range(4, 7): fragment.cells[y * Maps.WIDTH + x] = 3 if x == 5 and y == 5 else 2
+	game.workshop.generated_layout = fragment
+	game.workshop.insert_layout_button.disabled = false
+	game.workshop.insert_layout_button.pressed.emit()
+	check(game.workshop.mode == "insert_layout", "Insert button enables placement preview")
+	check(not game.workshop.insert_layout_at(Vector2.ZERO), "Out-of-bounds insertion is rejected")
+	check(game.map == before_insert, "Rejected insertion leaves map unchanged")
+	check(game.workshop.insert_layout_at(Vector2(10, 10) * game.SIZE), "Layout inserts at chosen map location")
+	check(game.map.cells[10 * Maps.WIDTH + 10] == 3, "Inserted floor is positioned at cursor")
+	check(game.map.spawn == before_insert.spawn and game.map.exit == before_insert.exit, "Insertion retains existing start and exit")
+	game.undo()
+	check(game.map == before_insert, "Entire insertion undoes in one step")
 	game.queue_free()
 	print("Layouts without usable geometry: %d / %d" % [rejected_layouts, game.workshop.room_layouts.size()])
 	print("Smoke checks completed: %d failures" % failures)

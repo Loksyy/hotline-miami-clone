@@ -1,5 +1,6 @@
 extends Node2D
 
+const WallGeometry = preload("res://scripts/rendering/wall_geometry.gd")
 const Maps = preload("res://scripts/map_data.gd")
 const ORIGIN := Vector2(32, 108)
 const SIZE := 28
@@ -60,10 +61,15 @@ var toggle_button: Button
 var palette: Array = []
 var dialog: FileDialog
 var file_action := ""
+const Preferences = preload("res://scripts/runtime_settings.gd")
+const PauseMenu = preload("res://scripts/ui/pause_menu.gd")
+var preferences := Preferences.new()
+var pause_menu: CanvasLayer
 const Workshop = preload("res://scripts/asset_workshop.gd")
 var workshop: Node
 
 func _ready() -> void:
+	preferences.load_settings()
 	Maps.ensure_floor_layer(map)
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sound = Sound.new()
@@ -71,6 +77,8 @@ func _ready() -> void:
 	build_ui()
 	workshop = Workshop.new()
 	add_child(workshop)
+	pause_menu = PauseMenu.new()
+	add_child(pause_menu)
 	reset_game()
 	queue_redraw()
 
@@ -470,8 +478,9 @@ func fire() -> void:
 	traces.append({"a": player, "b": endpoint, "time": S.SHOT_TRACE_TIME, "color": Color("ffe7a5")})
 
 func _process(delta: float) -> void:
+	fps_label.visible = preferences.show_fps
 	fps_update_time += delta
-	if fps_update_time >= 0.25:
+	if fps_update_time >= S.FPS_COUNTER_REFRESH_INTERVAL:
 		fps_update_time = 0.0
 		fps_label.text = "FPS: %d" % Engine.get_frames_per_second()
 	delta = minf(delta, 0.05)
@@ -832,30 +841,7 @@ func wall_connects(cell: Vector2i) -> bool:
 	return inside(cell) and map.cells[cell.y * Maps.WIDTH + cell.x] in [2, 5]
 
 func wall_segments(cell: Vector2i) -> Array[Rect2]:
-	var thickness := clampf(S.WALL_THICKNESS, 2, SIZE)
-	var half := thickness / 2.0
-	var origin := Vector2(cell) * SIZE
-	var middle := origin + Vector2.ONE * SIZE / 2.0
-	var left := wall_connects(cell + Vector2i.LEFT)
-	var right := wall_connects(cell + Vector2i.RIGHT)
-	var up := wall_connects(cell + Vector2i.UP)
-	var down := wall_connects(cell + Vector2i.DOWN)
-	var segments: Array[Rect2] = []
-	# One continuous horizontal run owns the junction. Vertical branches butt
-	# against its edges, never overlap it with another textured end cap.
-	if left or right:
-		var x0 := origin.x if left else middle.x - half
-		var x1 := origin.x + SIZE if right else middle.x + half
-		segments.append(Rect2(Vector2(x0, middle.y - half), Vector2(x1 - x0, thickness)))
-		if up: segments.append(Rect2(Vector2(middle.x - half, origin.y), Vector2(thickness, SIZE / 2.0 - half)))
-		if down: segments.append(Rect2(Vector2(middle.x - half, middle.y + half), Vector2(thickness, SIZE / 2.0 - half)))
-	elif up or down:
-		var y0 := origin.y if up else middle.y - half
-		var y1 := origin.y + SIZE if down else middle.y + half
-		segments.append(Rect2(Vector2(middle.x - half, y0), Vector2(thickness, y1 - y0)))
-	else:
-		segments.append(Rect2(middle - Vector2.ONE * half, Vector2.ONE * thickness))
-	return segments
+	return WallGeometry.segments(map, cell, S.WALL_THICKNESS)
 
 func structural_floor(cell: Vector2i, quadrant: Vector2) -> int:
 	var point := Vector2(cell) + quadrant
@@ -978,7 +964,7 @@ func _draw() -> void:
 		wall_outline_cache.clear()
 	draw_rect(Rect2(0, 0, 1280, 1080), S.EDITOR_CANVAS_COLOR)
 	draw_rect(Rect2(1280, 0, 640, 1080), Color("101725"))
-	var jitter := Vector2(randf_range(-shake, shake), randf_range(-shake, shake)) * S.SCREEN_SHAKE_SCALE if not editing else Vector2.ZERO
+	var jitter := Vector2(randf_range(-shake, shake), randf_range(-shake, shake)) * S.SCREEN_SHAKE_SCALE if not editing and preferences.screen_shake else Vector2.ZERO
 	view_zoom = camera_zoom()
 	render_origin = MAP_VIEW.get_center() - camera_center() * view_zoom + jitter
 	if editing:

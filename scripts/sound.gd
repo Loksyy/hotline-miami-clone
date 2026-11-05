@@ -3,6 +3,8 @@ const S = preload("res://scripts/game_settings.gd")
 
 var sounds: Dictionary = {}
 var muted := not S.SOUND_ENABLED
+var voices: Array[AudioStreamPlayer] = []
+var next_voice := 0
 
 func _ready() -> void:
 	for kind in ["shot", "hit", "swing", "pickup", "door", "death"]:
@@ -28,9 +30,15 @@ func _ready() -> void:
 
 func play(kind: String) -> void:
 	if muted or not sounds.has(kind): return
-	var voice := AudioStreamPlayer.new()
+	# Reuse a bounded voice pool instead of allocating/freeing nodes per shot.
+	if voices.is_empty():
+		for i in S.MAX_AUDIO_VOICES:
+			var voice := AudioStreamPlayer.new()
+			add_child(voice)
+			voices.append(voice)
+	var voice: AudioStreamPlayer = voices[next_voice]
+	next_voice = (next_voice + 1) % voices.size()
+	voice.stop()
 	voice.stream = sounds[kind]
 	voice.volume_db = S.SOUND_VOLUME_DB
-	add_child(voice)
-	voice.finished.connect(voice.queue_free)
 	voice.play()

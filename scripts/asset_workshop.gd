@@ -42,6 +42,7 @@ var drag_offset := Vector2.ZERO
 var drag_started := false
 var clipboard: Dictionary = {}
 var clock := 0.0
+var ui_refresh_time := 0.0
 var syncing_inspector := false
 var tabs: TabContainer
 var play_help: Label
@@ -64,6 +65,9 @@ var layouts_list: ItemList
 var layout_preview: TextureRect
 var layout_summary: Label
 var create_layout_button: Button
+var insert_layout_button: Button
+var insertion_layout: Dictionary = {}
+var insertion_bounds := Rect2i()
 var generated_layout: Dictionary = {}
 var construction_section: VBoxContainer
 var library_page: VBoxContainer
@@ -245,9 +249,9 @@ func build_browser() -> void:
 	var editing_modes := HBoxContainer.new()
 	columns.add_child(editing_modes)
 	select_tool = button("Select [V]", activate_select, editing_modes)
-	select_tool.tooltip_text = "Click a placed object to inspect it. Drag it to move. Escape cancels placement."
+	select_tool.tooltip_text = "Click a placed object to inspect it. Drag it to move. Escape opens the pause menu."
 	select_tool.toggle_mode = true
-	delete_tool = button("Delete", func(): mode = "erase"; game.painting = false; game.rectangle_mode = false; game.status.text = "Click an object, wall or tile to erase. Ctrl+Z restores it. Esc returns to Select.", editing_modes)
+	delete_tool = button("Delete", func(): mode = "erase"; game.painting = false; game.rectangle_mode = false; game.status.text = "Click an object, wall or tile to erase. Ctrl+Z restores it. Esc opens the pause menu.", editing_modes)
 	delete_tool.tooltip_text = "Activate the eraser, then click something on the map. Ctrl+Z restores it."
 	delete_tool.toggle_mode = true
 	delete_tool.disabled = true
@@ -476,7 +480,15 @@ func build_browser() -> void:
 	layout_summary = Label.new()
 	layout_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	layouts_page.add_child(layout_summary)
-	create_layout_button = button("Create map from layout", create_layout_map, layouts_page)
+	var layout_actions := HBoxContainer.new()
+	layouts_page.add_child(layout_actions)
+	create_layout_button = button("Create map from layout", create_layout_map, layout_actions)
+	insert_layout_button = button("Insert map layout", begin_layout_insert, layout_actions)
+	create_layout_button.modulate = Color("ffb766")
+	insert_layout_button.modulate = Color("60e4dc")
+	create_layout_button.tooltip_text = "Replace the entire current map."
+	insert_layout_button.tooltip_text = "Position this layout in the current map, then click to insert."
+	insert_layout_button.disabled = true
 	create_layout_button.disabled = true
 	layouts_page.hide()
 	filter_catalog()
@@ -500,6 +512,7 @@ func update_mode() -> void:
 	place_tool.disabled = draft.is_empty() or not game.editing or is_map_layout()
 	build_layout_button.visible = is_map_layout()
 	apply_button.visible = mode == "select"
+	if mode == "insert_layout": mode_badge.text = "INSERT LAYOUT / Click to place; Esc cancels"
 	if mode == "erase": mode_badge.text = "DELETE / Click something on the map"
 	undo_button.disabled = game.history.is_empty() or not game.editing
 	redo_button.disabled = game.future.is_empty() or not game.editing
@@ -541,6 +554,7 @@ func select_layout(index: int) -> void:
 	var error: String = game.Maps.validate(generated_layout)
 	var supported: bool = generated_layout.name != "Untitled floor" and error.is_empty()
 	create_layout_button.disabled = not supported
+	insert_layout_button.disabled = not supported
 	layout_summary.text = "%s / %d doors / %d windows\nCreate replaces this floor. Undo restores it." % [entry.name, generated_layout.cells.count(5), generated_layout.objects.size()] if supported else "This frame has too little usable floor. Choose another layout."
 	var image := Image.create(game.Maps.WIDTH * 8, game.Maps.HEIGHT * 8, false, Image.FORMAT_RGBA8)
 	image.fill(Color("10222a"))
@@ -550,6 +564,61 @@ func select_layout(index: int) -> void:
 			var color := Color("a6baa2") if tile in [1, 3, 4] else (Color("fff1cb") if tile == 2 else Color("f179af"))
 			if tile != 0: image.fill_rect(Rect2i(x * 8, y * 8, 8, 8), color)
 	layout_preview.texture = ImageTexture.create_from_image(image)
+
+func begin_layout_insert() -> void:
+	if not game.editing or generated_layout.is_empty() or insert_layout_button.disabled: return
+	insertion_layout = generated_layout.duplicate(true)
+	game.Maps.ensure_floor_layer(insertion_layout)
+	var low := Vector2i(game.Maps.WIDTH, game.Maps.HEIGHT)
+	var high := Vector2i.ZERO
+	for y in game.Maps.HEIGHT:
+		for x in game.Maps.WIDTH:
+			if insertion_layout.cells[y * game.Maps.WIDTH + x] != 0:
+				low = low.min(Vector2i(x, y)); high = high.max(Vector2i(x + 1, y + 1))
+	insertion_bounds = Rect2i(low, high - low)
+	mode = "insert_layout"
+	game.painting = false
+	game.rectangle_mode = false
+	game.status.text = "INSERT LAYOUT / Move preview, click to place. Red means out of bounds or an actor would be covered. Esc opens the pause menu."
+
+func insertion_offset(point: Vector2) -> Vector2i:
+	return Vector2i((point / game.SIZE).floor()) - insertion_bounds.position - insertion_bounds.size / 2
+
+func insertion_valid(offset: Vector2i) -> bool:
+	if insertion_layout.is_empty(): return false
+	for y in range(insertion_bounds.position.y, insertion_bounds.end.y):
+		for x in range(insertion_bounds.position.x, insertion_bounds.end.x):
+			var tile: int = insertion_layout.cells[y * game.Maps.WIDTH + x]
+			if tile == 0: continue
+			var target := Vector2i(x, y) + offset
+			if not game.inside(target): return false
+			if not game.Maps.floor_tile(tile) and [target.x, target.y] in [game.map.spawn, game.map.exit] + game.map.enemies: return false
+	if objects().size() + insertion_layout.objects.size() > S.MAX_MAP_OBJECTS: return false
+	return true
+
+func insert_layout_at(point: Vector2) -> bool:
+	var offset := insertion_offset(point)
+	if not insertion_valid(offset):
+		game.status.text = "Cannot insert here: keep the layout inside the map and clear of player/enemy/exit markers."
+		return false
+	game.snapshot()
+	game.Maps.ensure_floor_layer(game.map)
+	for y in range(insertion_bounds.position.y, insertion_bounds.end.y):
+		for x in range(insertion_bounds.position.x, insertion_bounds.end.x):
+			var source: int = y * game.Maps.WIDTH + x
+			if insertion_layout.cells[source] == 0: continue
+			var target := Vector2i(x, y) + offset
+			var index: int = target.y * game.Maps.WIDTH + target.x
+			game.map.cells[index] = insertion_layout.cells[source]
+			game.map.floors[index] = insertion_layout.floors[source]
+	for original in insertion_layout.objects:
+		var item: Dictionary = original.duplicate(true)
+		item.pos = [item.pos[0] + offset.x * game.SIZE, item.pos[1] + offset.y * game.SIZE]
+		objects().append(item)
+	activate_select()
+	game.status.text = "Layout inserted. Existing start, exit and enemies retained. Ctrl+Z undoes insertion."
+	game.queue_redraw()
+	return true
 
 func create_layout_map() -> void:
 	if not game.editing or generated_layout.is_empty() or create_layout_button.disabled: return
@@ -735,8 +804,8 @@ func use_stamp() -> void:
 	game.painting = false
 	var focused := get_viewport().gui_get_focus_owner()
 	if focused != null: focused.release_focus()
-	game.status.text = "Click: place / Right-click: erase / Ctrl+click: grab / Shift+right-click: rotate / Esc: select"
-	if is_floor_stamp(): game.status.text = "Click: place / Wheel: resize / Ctrl+wheel: zoom / Q,E: rotate / Esc: select"
+	game.status.text = "Click: place / Right-click: erase / Ctrl+click: grab / Shift+right-click: rotate / Esc: menu"
+	if is_floor_stamp(): game.status.text = "Click: place / Wheel: resize / Ctrl+wheel: zoom / Q,E: rotate / Esc: menu"
 	if is_map_layout(): game.status.text = "Choose a layout frame, then Build this layout as a map. Ctrl+Z restores the old map."
 
 func apply_selected() -> void:
@@ -860,12 +929,15 @@ func is_floor_stamp() -> bool:
 
 func handle_event(event: InputEvent) -> bool:
 	if not game.editing: return false
+	if mode == "insert_layout" and event is InputEventMouseButton and event.pressed and game.MAP_VIEW.has_point(event.position):
+		if event.button_index == MOUSE_BUTTON_LEFT: insert_layout_at(game.screen_to_world(event.position)); return true
+		if event.button_index == MOUSE_BUTTON_RIGHT: activate_select(); return true
 	if event is InputEventMouseButton and event.pressed and game.MAP_VIEW.has_point(event.position) and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 		if mode == "stamp" and is_floor_stamp() and not event.ctrl_pressed:
 			var direction := 1.0 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0
 			draft.scale = clampf(draft.scale + direction * S.FLOOR_STAMP_SCALE_STEP, 0.1, 8.0)
 			sync_inspector(draft)
-			game.status.text = "Size: %.2fx / Wheel: resize / Ctrl+wheel: zoom / Click: place / Esc: select" % draft.scale
+			game.status.text = "Size: %.2fx / Wheel: resize / Ctrl+wheel: zoom / Click: place / Esc: menu" % draft.scale
 			return true
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_B: open_browser(); return true
@@ -954,7 +1026,10 @@ func handle_event(event: InputEvent) -> bool:
 
 func tick(delta: float) -> void:
 	clock += delta
-	update_mode()
+	ui_refresh_time += delta
+	if ui_refresh_time >= S.EDITOR_UI_REFRESH_INTERVAL:
+		ui_refresh_time = 0.0
+		update_mode()
 	if not game.editing or game.dialog.visible:
 		dragging = false
 		return
@@ -1001,6 +1076,16 @@ func draw_layer(layer: int) -> void:
 
 func draw_tools() -> void:
 	if not game.editing or game.dialog.visible: return
+	if mode == "insert_layout" and game.MAP_VIEW.has_point(game.get_global_mouse_position()):
+		var offset := insertion_offset(game.mouse_world())
+		var valid := insertion_valid(offset)
+		for y in range(insertion_bounds.position.y, insertion_bounds.end.y):
+			for x in range(insertion_bounds.position.x, insertion_bounds.end.x):
+				var tile: int = insertion_layout.cells[y * game.Maps.WIDTH + x]
+				if tile == 0: continue
+				var tint := Color(0.3, 1, 0.6, 0.45) if valid else Color(1, 0.25, 0.3, 0.5)
+				if tile in [2, 5]: tint.a = 0.85
+				game.draw_rect(Rect2(Vector2(Vector2i(x, y) + offset) * game.SIZE, Vector2.ONE * game.SIZE), tint)
 	if mode == "select" and selected < 0 and game.inside(selected_terrain):
 		var tile: int = game.map.cells[selected_terrain.y * game.Maps.WIDTH + selected_terrain.x]
 		if tile == 2:

@@ -126,3 +126,8 @@ const PROP_SCALE_OVERRIDES := {
  "Furniture/sprAndersDrawer.png": 0.4,
 }
 const DOOR_LEAF_THICKNESS := 4.0
+
+# Performance budgets (developer defaults; user preferences are separate).
+const MAX_AUDIO_VOICES := 8
+const EDITOR_UI_REFRESH_INTERVAL := 0.1
+const FPS_COUNTER_REFRESH_INTERVAL := 0.25

@@ -36,6 +36,7 @@ var crop_inputs: Array[SpinBox] = []
 var draft: Dictionary = {}
 var mode := "terrain"
 var selected := -1
+var selected_terrain := Vector2i(-1, -1)
 var dragging := false
 var drag_offset := Vector2.ZERO
 var drag_started := false
@@ -55,7 +56,16 @@ var selection_actions: HBoxContainer
 var empty_results: Label
 var mode_badge: Label
 var select_tool: Button
+var delete_tool: Button
 var place_tool: Button
+var build_layout_button: Button
+var layouts_page: VBoxContainer
+var layouts_list: ItemList
+var layout_preview: TextureRect
+var layout_summary: Label
+var create_layout_button: Button
+var generated_layout: Dictionary = {}
+var construction_section: VBoxContainer
 var library_page: VBoxContainer
 var detail_page: VBoxContainer
 var undo_button: Button
@@ -135,14 +145,8 @@ func _ready() -> void:
 	var value: Variant = JSON.parse_string(text)
 	if value is Array: catalog = value
 	for entry in catalog: metadata[entry.path] = entry
-	for entry in catalog:
-		if entry.category != "Floor Plans": continue
-		for i in int(entry.frames):
-			var layout: Dictionary = entry.duplicate(true)
-			layout.category = "Room layouts"
-			layout.name = entry.name.trim_prefix("spr").get_slice("_strip", 0) + " / " + str(i + 1)
-			layout["frame"] = i
-			room_layouts.append(layout)
+	var layouts: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/layouts.json"))
+	if layouts is Array: room_layouts = layouts
 	build_atlas_tiles()
 	build_browser()
 
@@ -243,6 +247,10 @@ func build_browser() -> void:
 	select_tool = button("Select [V]", activate_select, editing_modes)
 	select_tool.tooltip_text = "Click a placed object to inspect it. Drag it to move. Escape cancels placement."
 	select_tool.toggle_mode = true
+	delete_tool = button("Delete", func(): mode = "erase"; game.painting = false; game.rectangle_mode = false; game.status.text = "Click an object, wall or tile to erase. Ctrl+Z restores it. Esc returns to Select.", editing_modes)
+	delete_tool.tooltip_text = "Activate the eraser, then click something on the map. Ctrl+Z restores it."
+	delete_tool.toggle_mode = true
+	delete_tool.disabled = true
 	place_tool = button("Place asset", use_stamp, editing_modes)
 	place_tool.tooltip_text = "Place copies of the current asset. Pick an asset in the library first."
 	place_tool.toggle_mode = true
@@ -261,12 +269,6 @@ func build_browser() -> void:
 	button("New blank map", func(): game.replace_map(game.Maps.blank()), map_tab)
 	button("Load demo layout", func(): game.replace_map(game.Maps.starter()), map_tab)
 	button("Check routes to enemies and exit", game.check_routes, map_tab)
-	section("VIEW", map_tab)
-	button("Fit entire map [Home]", func(): game.editor_center = Vector2(448, 308); game.editor_zoom = 1.0; game.queue_redraw(), map_tab)
-	button("Toggle grid [G]", func(): game.show_grid = not game.show_grid; game.queue_redraw(), map_tab)
-	var guidance := Label.new()
-	guidance.text = "1. Build: paint floors and walls, place enemies.\n2. Assets: click a thumbnail, then click the map.\n3. Playtest your layout, then save it.\n\nCAMERA\nMouse wheel: zoom / Middle drag: pan\n\nOBJECTS\nSelect, then drag to move.\nQ / E: rotate / [ / ]: resize\nDelete: remove / Enter: properties\nCtrl+C / V: copy / paste\nCtrl+D: duplicate / Esc: select mode"
-	foldout("Controls and getting started", map_tab).add_child(guidance)
 	var build_tab := VBoxContainer.new()
 	build_tab.name = "BUILD"
 	tabs.add_child(build_tab)
@@ -290,7 +292,7 @@ func build_browser() -> void:
 	var tools_grid := GridContainer.new()
 	tools_grid.columns = 2
 	build_tab.add_child(tools_grid)
-	var names := ["Void [1]", "Carpet [2]", "Wall [3]", "Player spawn [4]", "Enemy [5]", "Exit [6]", "Erase / floor [7]", "Wood floor [8]", "Tile floor [9]", "Working door [0]", "Sofa [-]"]
+	var names := ["Void [1]", "Carpet [2]", "Wall [3]", "Player spawn [4]", "Enemy [5]", "Exit [6]", "Erase [7]", "Wood floor [8]", "Tile floor [9]", "Working door [0]", "Sofa [-]"]
 	for i in names.size():
 		var index := i
 		var tool := button(names[i], func(): game.select_brush(index), tools_grid)
@@ -302,8 +304,9 @@ func build_browser() -> void:
 			tool.expand_icon = true
 			tool.add_theme_constant_override("icon_max_width", 32)
 		game.palette.append(tool)
+		if i in [0, 6, 10]: tool.hide() # Eraser and asset library already provide these.
 	var door_help := Label.new()
-	door_help.text = "Doors replace a single wall cell.\nWalk to push open; Space to kick or close.\nRight-click removes enemies or restores floor."
+	door_help.text = "Doors replace a single wall cell.\nWalk to push open; Space to kick or close.\nRight-click removes enemies or erases terrain."
 	door_help.hide()
 	build_tab.add_child(door_help)
 	game.select_brush(game.brush)
@@ -329,11 +332,10 @@ func build_browser() -> void:
 	category.add_item("All categories")
 	var categories: Array = []
 	for entry in catalog:
-		if entry.category not in categories: categories.append(entry.category)
+		if entry.category != "Floor Plans" and entry.category not in categories: categories.append(entry.category)
 	categories.sort()
 	for name in categories: category.add_item(name)
 	category.add_item("Atlas tiles (16 px)")
-	category.add_item("Room layouts")
 	filters.add_child(category)
 	category.item_selected.connect(func(_index): filter_catalog())
 	var quick_filters := HBoxContainer.new()
@@ -343,9 +345,8 @@ func build_browser() -> void:
 	browse_filter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	quick_filters.add_child(browse_filter)
 	browse_filter.item_selected.connect(func(_index): filter_catalog())
-	button("Reset filters", reset_filters, quick_filters)
 	button("Floor tiles", show_atlas_tiles, quick_filters)
-	button("Room layouts", show_room_layouts, quick_filters)
+	button("Layouts", show_room_layouts, toolbar)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	library.add_child(scroll)
@@ -354,7 +355,7 @@ func build_browser() -> void:
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(grid)
 	empty_results = Label.new()
-	empty_results.text = "No matching assets. Try a shorter search or reset the filters."
+	empty_results.text = "No matching assets. Clear the search or choose All categories."
 	empty_results.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	library.add_child(empty_results)
 	var pager := HBoxContainer.new()
@@ -391,6 +392,9 @@ func build_browser() -> void:
 	description.custom_minimum_size.x = 580
 	inspector.add_child(description)
 	description.text = "Click a thumbnail to start placing it on the map."
+	build_layout_button = button("Build this layout as a map", build_selected_layout, inspector)
+	build_layout_button.tooltip_text = "Replace this floor with editable terrain, doors and windows. Ctrl+Z restores the previous map."
+	build_layout_button.hide()
 	section("OBJECT PROPERTIES", inspector)
 	favorite_button = button("Add to favorites", toggle_favorite, inspector)
 	frame_input = number("Frame", 0, 1000, 1, 0, inspector)
@@ -436,22 +440,45 @@ func build_browser() -> void:
 	game.status.reparent(columns)
 	game.status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	game.status.custom_minimum_size = Vector2(600, 55)
-	map_tab.reparent(foldout("Map options & help", build_tab))
-	var tools_popup := PopupPanel.new()
-	tools_popup.title = "Terrain tools"
-	tools_popup.theme = window.theme
-	add_child(tools_popup)
+	map_tab.reparent(build_tab)
+	map_tab.show()
+	var construction := foldout("Floors, walls & gameplay", columns)
+	construction_section = construction
+	var construction_toggle: Control = columns.get_child(construction.get_index() - 1)
+	columns.move_child(construction_toggle, tabs.get_index())
+	columns.move_child(construction, tabs.get_index())
 	var build_scroll := ScrollContainer.new()
-	build_scroll.custom_minimum_size = Vector2(600, 650)
-	tools_popup.add_child(build_scroll)
+	build_scroll.custom_minimum_size.y = 260
+	construction.add_child(build_scroll)
 	build_tab.reparent(build_scroll)
 	build_tab.show()
 	build_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button("Build tools", func(): tools_popup.popup_centered(Vector2i(620, 680)), toolbar)
-	for tool in game.palette:
-		tool.pressed.connect(func(): tools_popup.hide())
 	tabs.tabs_visible = false
 	tabs.current_tab = 0
+	layouts_page = VBoxContainer.new()
+	layouts_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	assets_tab.add_child(layouts_page)
+	button("< Back to library", show_library_page, layouts_page)
+	section("NEW MAP FROM LAYOUT", layouts_page)
+	layouts_list = ItemList.new()
+	layouts_list.custom_minimum_size.y = 280
+	layouts_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layouts_list.fixed_icon_size = Vector2i(64, 48)
+	layouts_page.add_child(layouts_list)
+	for entry in room_layouts: layouts_list.add_item(entry.name, texture_for(entry.path, int(entry.frame)))
+	layouts_list.item_selected.connect(select_layout)
+	layout_preview = TextureRect.new()
+	layout_preview.custom_minimum_size = Vector2(580, 260)
+	layout_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	layout_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	layout_preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	layouts_page.add_child(layout_preview)
+	layout_summary = Label.new()
+	layout_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	layouts_page.add_child(layout_summary)
+	create_layout_button = button("Create map from layout", create_layout_map, layouts_page)
+	create_layout_button.disabled = true
+	layouts_page.hide()
 	filter_catalog()
 
 func activate_select() -> void:
@@ -470,11 +497,15 @@ func update_mode() -> void:
 	select_tool.set_pressed_no_signal(mode == "select")
 	place_tool.set_pressed_no_signal(mode == "stamp")
 	select_tool.disabled = not game.editing
-	place_tool.disabled = draft.is_empty() or not game.editing
+	place_tool.disabled = draft.is_empty() or not game.editing or is_map_layout()
+	build_layout_button.visible = is_map_layout()
 	apply_button.visible = mode == "select"
+	if mode == "erase": mode_badge.text = "DELETE / Click something on the map"
 	undo_button.disabled = game.history.is_empty() or not game.editing
 	redo_button.disabled = game.future.is_empty() or not game.editing
 	var valid_selection := selected >= 0 and selected < objects().size()
+	delete_tool.disabled = not game.editing
+	delete_tool.set_pressed_no_signal(mode == "erase")
 	apply_button.disabled = not valid_selection or draft.is_empty()
 	selection_actions.visible = valid_selection
 	favorite_button.disabled = draft.is_empty()
@@ -494,11 +525,40 @@ func show_atlas_tiles() -> void:
 	filter_catalog()
 
 func show_room_layouts() -> void:
-	search.text = ""
-	browse_filter.select(0)
-	for i in category.item_count:
-		if category.get_item_text(i) == "Room layouts": category.select(i)
-	filter_catalog()
+	if not game.editing: return
+	activate_select()
+	library_page.hide()
+	detail_page.hide()
+	layouts_page.show()
+	if layouts_list.is_anything_selected(): return
+	if not room_layouts.is_empty():
+		layouts_list.select(0)
+		select_layout(0)
+
+func select_layout(index: int) -> void:
+	var entry: Dictionary = room_layouts[index]
+	generated_layout = game.Maps.from_layout(entry.path, int(entry.frame), int(metadata[entry.path].frames))
+	var error: String = game.Maps.validate(generated_layout)
+	var supported: bool = generated_layout.name != "Untitled floor" and error.is_empty()
+	create_layout_button.disabled = not supported
+	layout_summary.text = "%s / %d doors / %d windows\nCreate replaces this floor. Undo restores it." % [entry.name, generated_layout.cells.count(5), generated_layout.objects.size()] if supported else "This frame has too little usable floor. Choose another layout."
+	var image := Image.create(game.Maps.WIDTH * 8, game.Maps.HEIGHT * 8, false, Image.FORMAT_RGBA8)
+	image.fill(Color("10222a"))
+	for y in game.Maps.HEIGHT:
+		for x in game.Maps.WIDTH:
+			var tile: int = generated_layout.cells[y * game.Maps.WIDTH + x]
+			var color := Color("a6baa2") if tile in [1, 3, 4] else (Color("fff1cb") if tile == 2 else Color("f179af"))
+			if tile != 0: image.fill_rect(Rect2i(x * 8, y * 8, 8, 8), color)
+	layout_preview.texture = ImageTexture.create_from_image(image)
+
+func create_layout_map() -> void:
+	if not game.editing or generated_layout.is_empty() or create_layout_button.disabled: return
+	game.replace_map(generated_layout.duplicate(true))
+	activate_select()
+	game.editor_center = Vector2(game.Maps.WIDTH, game.Maps.HEIGHT) * game.SIZE / 2.0
+	game.editor_zoom = 1.0
+	game.status.text = "Created " + game.map.name + ". Ctrl+Z restores the previous map."
+	show_library_page()
 
 func toggle_favorite() -> void:
 	if draft.is_empty(): return
@@ -522,7 +582,8 @@ func filter_catalog() -> void:
 	filtered.clear()
 	var query := search.text.to_lower()
 	var group := category.get_item_text(category.selected)
-	for entry in catalog + atlas_tiles + room_layouts:
+	for entry in catalog + atlas_tiles:
+		if entry.category == "Floor Plans": continue
 		if browse_filter.selected == 1 and entry.path not in favorites: continue
 		if browse_filter.selected == 2 and entry.path not in recent: continue
 		if category.selected != 0 and entry.category != group: continue
@@ -600,7 +661,7 @@ func choose_entry(entry: Dictionary) -> void:
 		frame_input.value = entry.frame
 		read_draft()
 		update_preview()
-		game.status.text = "%s / Click: place / Wheel: resize / Ctrl+wheel: zoom" % entry.name
+		game.status.text = "%s / Choose Build this layout as a map to create editable terrain." % entry.name
 
 func choose(path: String) -> void:
 	show_detail_page()
@@ -631,7 +692,7 @@ func choose(path: String) -> void:
 
 func update_preview() -> void:
 	if syncing_inspector or draft.is_empty() or crop_inputs.size() < 4: return
-	if mode == "stamp" and tiled_input != null: read_draft()
+	if (mode == "stamp" or is_map_layout()) and tiled_input != null: read_draft()
 	preview.texture = texture_for(draft.asset, int(frame_input.value), current_crop())
 	var size := preview.texture.get_size() * scale_input.value
 	description.text = "%s / %.0f x %.0f px" % [draft.asset.get_file().get_basename(), size.x, size.y]
@@ -654,16 +715,29 @@ func read_draft() -> void:
 	draft["tiled"] = tiled_input.button_pressed
 	draft["size"] = [width_input.value, height_input.value]
 
+func is_map_layout() -> bool:
+	return not draft.is_empty() and metadata.get(draft.asset, {}).get("category", "") == "Floor Plans"
+
+func build_selected_layout() -> void:
+	if not is_map_layout() or not game.editing: return
+	var generated: Dictionary = game.Maps.from_layout(draft.asset, int(draft.frame), int(metadata[draft.asset].frames))
+	game.replace_map(generated)
+	activate_select()
+	game.editor_center = Vector2(game.Maps.WIDTH, game.Maps.HEIGHT) * game.SIZE / 2.0
+	game.editor_zoom = 1.0
+	game.status.text = "Layout built with editable floors, walls, doors and windows. Ctrl+Z restores the previous map."
+
 func use_stamp() -> void:
 	read_draft()
 	if draft.is_empty(): return
-	mode = "stamp"
+	mode = "select" if is_map_layout() else "stamp"
 	window.show()
 	game.painting = false
 	var focused := get_viewport().gui_get_focus_owner()
 	if focused != null: focused.release_focus()
 	game.status.text = "Click: place / Right-click: erase / Ctrl+click: grab / Shift+right-click: rotate / Esc: select"
 	if is_floor_stamp(): game.status.text = "Click: place / Wheel: resize / Ctrl+wheel: zoom / Q,E: rotate / Esc: select"
+	if is_map_layout(): game.status.text = "Choose a layout frame, then Build this layout as a map. Ctrl+Z restores the old map."
 
 func apply_selected() -> void:
 	if selected < 0 or selected >= objects().size() or draft.is_empty(): return
@@ -694,10 +768,12 @@ func sync_inspector(item: Dictionary) -> void:
 	update_preview()
 
 func show_library_page() -> void:
+	if layouts_page != null: layouts_page.hide()
 	library_page.show()
 	detail_page.hide()
 
 func show_detail_page() -> void:
+	if layouts_page != null: layouts_page.hide()
 	library_page.hide()
 	detail_page.show()
 
@@ -727,7 +803,7 @@ func position_for(point: Vector2) -> Vector2:
 	return point.clamp(Vector2.ZERO, Vector2(game.Maps.WIDTH, game.Maps.HEIGHT) * game.SIZE - Vector2.ONE)
 
 func place(point: Vector2) -> void:
-	if draft.is_empty() or objects().size() >= S.MAX_MAP_OBJECTS: return
+	if draft.is_empty() or is_map_layout() or objects().size() >= S.MAX_MAP_OBJECTS: return
 	var item := draft.duplicate(true)
 	var position := position_for(point)
 	item.pos = [position.x, position.y]
@@ -800,6 +876,8 @@ func handle_event(event: InputEvent) -> bool:
 			return true
 		if event.ctrl_pressed and event.keycode == KEY_V and not clipboard.is_empty():
 			mode = "stamp"; sync_inspector(clipboard); return true
+		if event.keycode == KEY_DELETE and selected < 0 and game.inside(selected_terrain):
+			game.snapshot(); game.paint(selected_terrain, true); selected_terrain = Vector2i(-1, -1); return true
 		if mode == "terrain": return false
 		if event.keycode == KEY_ENTER: inspect_selected(); return true
 		if event.keycode == KEY_DELETE and selected >= 0 and selected < objects().size():
@@ -840,8 +918,29 @@ func handle_event(event: InputEvent) -> bool:
 				selected = hit_test(point)
 				delete_selected()
 			return true
+		if mode == "erase":
+			var target_cell := Vector2i((point / game.SIZE).floor())
+			if game.inside(target_cell) and game.map.cells[target_cell.y * game.Maps.WIDTH + target_cell.x] in [2, 5, 6] and game.solid(point):
+				game.snapshot(); game.paint(target_cell, true); return true
+			selected = hit_test(point)
+			if selected >= 0: delete_selected()
+			else:
+				var cell := Vector2i((point / game.SIZE).floor())
+				if game.inside(cell): game.snapshot(); game.paint(cell, true)
+			return true
 		if mode == "stamp": place(point); return true
 		selected = hit_test(point)
+		selected_terrain = Vector2i(-1, -1)
+		var cell := Vector2i((point / game.SIZE).floor())
+		if game.inside(cell) and (selected < 0 or objects()[selected].layer == 0):
+			var tile: int = game.map.cells[cell.y * game.Maps.WIDTH + cell.x]
+			if tile in [2, 5, 6] and game.solid(point):
+				selected = -1
+				selected_terrain = cell
+				game.status.text = "Structure selected / Delete removes only the structure; floor stays."
+		if selected < 0 and game.inside(cell) and selected_terrain.x < 0:
+			selected_terrain = cell
+			game.status.text = "Terrain selected / Delete removes the selected terrain."
 		if selected >= 0:
 			sync_inspector(objects()[selected])
 			show_detail_page()
@@ -902,6 +1001,11 @@ func draw_layer(layer: int) -> void:
 
 func draw_tools() -> void:
 	if not game.editing or game.dialog.visible: return
+	if mode == "select" and selected < 0 and game.inside(selected_terrain):
+		var tile: int = game.map.cells[selected_terrain.y * game.Maps.WIDTH + selected_terrain.x]
+		if tile == 2:
+			for segment in game.wall_segments(selected_terrain): game.draw_rect(segment.grow(1), Color("60e4dc"), false, 1)
+		else: game.draw_rect(Rect2(Vector2(selected_terrain) * game.SIZE, Vector2.ONE * game.SIZE), Color("60e4dc"), false, 1)
 	if mode == "stamp" and not draft.is_empty() and game.MAP_VIEW.has_point(game.get_global_mouse_position()):
 		var item := draft.duplicate(true)
 		var position := position_for(game.mouse_world())

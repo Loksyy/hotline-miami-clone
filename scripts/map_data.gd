@@ -39,38 +39,191 @@ static func demo() -> Dictionary:
 	return map
 
 static func starter() -> Dictionary:
-	# Apartment layout: entry/living room, kitchen, bedroom and rear exit.
+	return from_layout("Floor Plans/sprApartment1_strip16.png", 8, 16)
+
+static func layout_background(color: Color) -> bool:
+	return color.a < 0.1 or (color.g > color.r * 1.4 and color.g > color.b * 1.2)
+
+static func from_layout(asset: String, frame: int, frames: int) -> Dictionary:
+	var image := (load("res://HLM1 Files/" + asset) as Texture2D).get_image()
+	var fw := image.get_width() / frames
+	var region := image.get_region(Rect2i((frame % frames) * fw, 0, fw, image.get_height()))
 	var map := blank()
-	map.name = "01 / NIGHT SHIFT APARTMENT"
-	for y in HEIGHT:
-		for x in WIDTH:
-			map.cells[y * WIDTH + x] = 0
-	for y in range(2, 20):
-		for x in range(3, 29):
-			var boundary := x in [3, 28] or y in [2, 19]
-			map.cells[y * WIDTH + x] = 2 if boundary else (4 if x >= 19 and y < 11 else 3)
-	for y in range(3, 19): map.cells[y * WIDTH + 18] = 2
-	for x in range(19, 28): map.cells[11 * WIDTH + x] = 2
-	for cell in [[18, 7], [18, 15], [24, 11]]: map.cells[cell[1] * WIDTH + cell[0]] = 5
-	map.spawn = [6, 15]
-	map.exit = [26, 17]
-	map.enemies = [[12, 5], [24, 5], [22, 16]]
-	# The source floor-plan is a miniature diagram: keep it as an editable
-	# planning reference beside the furnished rooms, rather than fake collision.
-	map.objects = [
-		prop("Floor Plans/sprApartment1_strip16.png", Vector2(448, 28), 1.0, 0, false, 8),
-		prop("Furniture/sprSofaH48_strip2.png", Vector2(252, 182), 1.0),
-		prop("Furniture/sprAndersTable.png", Vector2(280, 294), 1.0),
-		prop("Furniture/sprAndersBed.png", Vector2(700, 392), 1.0),
-		prop("Furniture/sprAndersDrawer.png", Vector2(762, 420), 0.4),
-		prop("Furniture/sprAndersDesk_strip6.png", Vector2(644, 168), 1.0)
-	]
+	map.name = asset.get_file().get_basename() + " / " + str(frame + 1)
+	map.objects = []
+	map.enemies = []
+	map.cells.fill(0)
+	# Flood background from the image boundary. Green inside a closed outline
+	# is room interior too, not empty space (many frames are outline-only).
+	var exterior: Dictionary = {}
+	var pending_pixels: Array[Vector2i] = []
+	for y in region.get_height():
+		for x in region.get_width():
+			if x == 0 or y == 0 or x == region.get_width() - 1 or y == region.get_height() - 1:
+				var pixel := Vector2i(x, y)
+				if layout_background(region.get_pixelv(pixel)):
+					exterior[pixel] = true
+					pending_pixels.append(pixel)
+	var cursor := 0
+	while cursor < pending_pixels.size():
+		var pixel: Vector2i = pending_pixels[cursor]
+		cursor += 1
+		for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var next: Vector2i = pixel + direction
+			if next.x < 0 or next.y < 0 or next.x >= region.get_width() or next.y >= region.get_height() or exterior.has(next): continue
+			if layout_background(region.get_pixelv(next)):
+				exterior[next] = true
+				pending_pixels.append(next)
+	var low := region.get_size()
+	var high := Vector2i.ZERO
+	for y in region.get_height():
+		for x in region.get_width():
+			if not exterior.has(Vector2i(x, y)):
+				low = low.min(Vector2i(x, y))
+				high = high.max(Vector2i(x + 1, y + 1))
+	if high.x <= low.x or high.y <= low.y: return blank()
+	var bounds := high - low
+	var occupied: Dictionary = {}
+	var walls: Dictionary = {}
+	var scale := minf(26.0 / bounds.x, 18.0 / bounds.y)
+	var size := Vector2i(maxi(3, int(bounds.x * scale)), maxi(3, int(bounds.y * scale)))
+	var origin := Vector2i((WIDTH - size.x) / 2, (HEIGHT - size.y) / 2)
+	for y in size.y:
+		for x in size.x:
+			var filled := 0
+			var white := 0
+			var total := 0
+			for py in range(low.y + int(y * bounds.y / float(size.y)), low.y + maxi(int((y + 1) * bounds.y / float(size.y)), int(y * bounds.y / float(size.y)) + 1)):
+				for px in range(low.x + int(x * bounds.x / float(size.x)), low.x + maxi(int((x + 1) * bounds.x / float(size.x)), int(x * bounds.x / float(size.x)) + 1)):
+					total += 1
+					if exterior.has(Vector2i(px, py)): continue
+					filled += 1
+					var color := region.get_pixel(px, py)
+					if color.a > 0.5 and minf(color.r, minf(color.g, color.b)) > 0.65: white += 1
+			if filled == 0 or float(filled) / total < 0.25: continue
+			var cell := origin + Vector2i(x, y)
+			occupied[cell] = true
+			if float(white) / filled >= 0.12: walls[cell] = true
+	# Keep the perimeter inside the sampled footprint, never add an outer row.
+	for cell in occupied:
+		var boundary := false
+		for step in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			if not occupied.has(cell + step): boundary = true
+		map.cells[cell.y * WIDTH + cell.x] = 2 if boundary or walls.has(cell) else 3
+	var floors: Array[Vector2i] = []
+	for y in range(1, HEIGHT - 1):
+		for x in range(1, WIDTH - 1):
+			if floor_tile(map.cells[y * WIDTH + x]): floors.append(Vector2i(x, y))
+	if floors.size() < 2: return blank()
+	var start: Vector2i = floors[0]
+	var checked: Dictionary = {}
+	var largest := 0
+	for candidate in floors:
+		if checked.has(candidate): continue
+		var component := layout_reachable(map, candidate)
+		checked.merge(component)
+		if component.size() > largest:
+			largest = component.size()
+			start = candidate
+	# Connect rooms through structural walls. Each carved wall becomes a door.
+	var reached := layout_reachable(map, start)
+	for destination in floors:
+		if reached.has(destination): continue
+		var pending: Array[Vector2i] = [destination]
+		var previous: Dictionary = {destination: destination}
+		var found := Vector2i(-1, -1)
+		while not pending.is_empty():
+			var cell: Vector2i = pending.pop_front()
+			if reached.has(cell): found = cell; break
+			for step in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				var next: Vector2i = cell + step
+				if next.x < 1 or next.y < 1 or next.x >= WIDTH - 1 or next.y >= HEIGHT - 1 or previous.has(next): continue
+				if map.cells[next.y * WIDTH + next.x] == 0: continue
+				previous[next] = cell
+				pending.append(next)
+		if found.x >= 0:
+			while found != destination:
+				if map.cells[found.y * WIDTH + found.x] == 2: map.cells[found.y * WIDTH + found.x] = 5
+				found = previous[found]
+			reached = layout_reachable(map, start)
+	# Any truly separate island stays architectural, without unreachable actors.
+	var accessible: Array[Vector2i] = []
+	for cell in floors:
+		if reached.has(cell): accessible.append(cell)
+	if accessible.size() < 2: return blank()
+	map.spawn = [start.x, start.y]
+	var finish: Vector2i = accessible.back()
+	map.exit = [finish.x, finish.y]
+	for fraction in [0.35, 0.65]:
+		var cell: Vector2i = accessible[int((accessible.size() - 1) * fraction)]
+		var coordinate := [cell.x, cell.y]
+		if coordinate != map.spawn and coordinate != map.exit and coordinate not in map.enemies: map.enemies.append(coordinate)
+	# Alternate basic floor finishes across rooms/sections.
+	for cell in accessible:
+		if cell.x > WIDTH / 2: map.cells[cell.y * WIDTH + cell.x] = 4
+	# Existing open passages need a door too; room connection alone only
+	# inserts doors when a wall separates two disconnected regions.
+	if not map.cells.has(5):
+		for y in range(2, HEIGHT - 2):
+			if map.cells.has(5): break
+			for x in range(2, WIDTH - 2):
+				if [x, y] in [map.spawn, map.exit] + map.enemies: continue
+				var index := y * WIDTH + x
+				if map.cells[index] != 2: continue
+				if (floor_tile(map.cells[index - 1]) and floor_tile(map.cells[index + 1])) or (floor_tile(map.cells[index - WIDTH]) and floor_tile(map.cells[index + WIDTH])):
+					map.cells[index] = 5
+					break
+	# Window artwork overlays exterior structural walls, which retain collision.
+	for y in range(2, HEIGHT - 2):
+		for x in range(3, WIDTH - 3):
+			if map.objects.size() >= 3: break
+			if x % 5 != 0 or map.cells[y * WIDTH + x] != 2: continue
+			if map.cells[(y - 1) * WIDTH + x] == 0 and floor_tile(map.cells[(y + 1) * WIDTH + x]) and map.cells[y * WIDTH + x - 1] == 2 and map.cells[y * WIDTH + x + 1] == 2:
+				map.objects.append(prop("Walls/sprGlassPanelH.png", Vector2(x + 0.5, y + 0.5) * TILE, 1.0, 2, false))
 	return map
+
+static func layout_reachable(map: Dictionary, start: Vector2i) -> Dictionary:
+	var reached := {start: true}
+	var pending: Array[Vector2i] = [start]
+	while not pending.is_empty():
+		var cell: Vector2i = pending.pop_front()
+		for step in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var next: Vector2i = cell + step
+			if next.x < 0 or next.y < 0 or next.x >= WIDTH or next.y >= HEIGHT or reached.has(next): continue
+			var tile: int = map.cells[next.y * WIDTH + next.x]
+			if not floor_tile(tile) and tile != 5: continue
+			reached[next] = true
+			pending.append(next)
+	return reached
 
 static func prop(asset: String, position: Vector2, scale: float = 1.0, layer: int = 1, solid: bool = true, frame: int = 0) -> Dictionary:
 	return {"asset": asset, "pos": [position.x, position.y], "frame": frame,
 		"scale": S.PROP_SCALE_OVERRIDES.get(asset, scale), "rotation": 0.0, "layer": layer, "animated": false,
 		"solid": solid, "crop": [0, 0, 0, 0]}
+
+static func ensure_floor_layer(map: Dictionary) -> void:
+	if map.has("floors"): return
+	var floors: Array = []
+	for y in HEIGHT:
+		for x in WIDTH:
+			var tile: int = map.cells[y * WIDTH + x]
+			if floor_tile(tile) or tile == 0:
+				floors.append(tile)
+				continue
+			var material := 0
+			var nearest := 100000
+			for oy in range(-3, 4):
+				for ox in range(-3, 4):
+					var nx := x + ox
+					var ny := y + oy
+					if nx < 0 or ny < 0 or nx >= WIDTH or ny >= HEIGHT: continue
+					var candidate: int = map.cells[ny * WIDTH + nx]
+					var distance := ox * ox + oy * oy
+					if floor_tile(candidate) and distance < nearest:
+						nearest = distance
+						material = candidate
+			floors.append(material)
+	map.floors = floors
 
 static func _valid_cell(value: Variant) -> bool:
 	if not value is Array or value.size() != 2:
@@ -104,6 +257,10 @@ static func validate(value: Variant) -> String:
 		if cell in occupied:
 			return "Entity positions must not overlap."
 		occupied.append(cell)
+	if value.has("floors"):
+		if not value.floors is Array or value.floors.size() != WIDTH * HEIGHT: return "Invalid floor layer."
+		for tile in value.floors:
+			if not numeric(tile) or tile != int(tile) or int(tile) not in [0, 1, 3, 4]: return "Invalid floor material."
 	var props: Variant = value.get("objects", [])
 	if not props is Array or props.size() > S.MAX_MAP_OBJECTS: return "Invalid object list."
 	for item in props:
@@ -142,6 +299,8 @@ static func normalize(value: Dictionary) -> Dictionary:
 	for cell in [result.spawn, result.exit] + result.enemies:
 		cell[0] = int(cell[0])
 		cell[1] = int(cell[1])
+	if result.has("floors"):
+		for i in result.floors.size(): result.floors[i] = int(result.floors[i])
 	result.version = int(result.version)
 	for item in result.get("objects", []):
 		item.frame = int(item.frame)

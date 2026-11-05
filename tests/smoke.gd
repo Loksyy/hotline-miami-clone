@@ -29,7 +29,9 @@ func run() -> void:
 	root.add_child(game)
 	game.sound.muted = true
 	check(Maps.validate(game.map) == "", "New starter apartment validates")
-	check(game.map.objects[1].scale == 1.0 and game.map.objects[3].scale == 1.0, "Starter couch and bed use native proportions")
+	check(game.map.cells.has(5), "Generated default includes working doors")
+	check(not game.map.objects.is_empty(), "Generated default includes windows")
+	for item in game.map.objects: check(not item.asset.begins_with("Floor Plans/"), "Default contains no diagram stamps")
 	game.check_routes()
 	check(game.status.text.begins_with("Routes checked"), "Starter apartment enemies and exit are reachable")
 	for i in game.map.objects.size():
@@ -199,7 +201,7 @@ func run() -> void:
 	for tool in game.palette: check(game.workshop.is_ancestor_of(tool), "Terrain tools live in right dock")
 	game.workshop.mode = "terrain"
 	game.workshop.choose("Floor Plans/sprApartment1_strip16.png")
-	check(game.workshop.mode == "stamp", "Thumbnail click immediately enables placement")
+	check(game.workshop.mode == "select", "Layout selection does not activate picture stamping")
 	check(game.workshop.draft.scale == game.S.FLOOR_PLAN_DEFAULT_SCALE and game.workshop.draft.layer == 0, "Floor plan defaults to enlarged floor layer")
 	game.workshop.scale_input.value = 3
 	check(is_equal_approx(game.workshop.draft.scale, 3.0), "Inspector updates active stamp immediately")
@@ -232,7 +234,7 @@ func run() -> void:
 	check(game.open_doors.is_empty(), "Restart closes all doors")
 	game.toggle_mode()
 	game.paint(Vector2i(11, 5), true)
-	check(game.map.cells[5 * Maps.WIDTH + 11] == 1, "Terrain erase restores floor")
+	check(game.map.cells[5 * Maps.WIDTH + 11] == int(game.map.floors[5 * Maps.WIDTH + 11]), "Deleting a door preserves stored floor")
 	game.workshop.show_atlas_tiles()
 	check(game.workshop.filtered.size() == game.workshop.atlas_tiles.size() and game.workshop.atlas_tiles.size() > 100, "Atlas category exposes non-empty cells")
 	var atlas_entry: Dictionary = game.workshop.atlas_tiles[0]
@@ -241,7 +243,7 @@ func run() -> void:
 	check(game.workshop.preview.texture.get_size() == Vector2(16, 16), "Atlas preview shows one tile")
 	print("Atlas tiles available: %d" % game.workshop.atlas_tiles.size())
 	game.workshop.show_room_layouts()
-	check(game.workshop.filtered.size() == game.workshop.room_layouts.size() and game.workshop.filtered.size() > 100, "Room-layout browser exposes individual frames")
+	check(game.workshop.layouts_list.item_count == game.workshop.room_layouts.size() and game.workshop.layouts_page.visible, "Room-layout browser exposes individual frames")
 	var layout: Dictionary = game.workshop.room_layouts[1]
 	game.workshop.choose_entry(layout)
 	check(game.workshop.draft.frame == layout.frame and game.workshop.draft.layer == 0, "Room layout selects exact frame on floor layer")
@@ -293,7 +295,7 @@ func run() -> void:
 	check(game.workshop.objects().size() == before_delete - 1, "Right-click erases object under pointer")
 	game.undo()
 	check(game.workshop.objects().size() == before_delete, "Object erasure is undoable")
-	game.workshop.choose_entry(layout)
+	game.workshop.choose("Furniture/sprSofaH48_strip2.png")
 	var wheel := InputEventMouseButton.new()
 	game.workshop.rotate_active(90)
 	check(game.workshop.draft.rotation == 90 and game.workshop.rotation_input.value == 90, "Layout rotate button updates preview and properties")
@@ -306,7 +308,9 @@ func run() -> void:
 	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
 	var original_scale: float = game.workshop.draft.scale
 	var original_zoom: float = game.editor_zoom
-	check(game.workshop.handle_event(wheel), "Layout stamp consumes wheel for resizing")
+	game.workshop.choose_tile(atlas_entry)
+	original_scale = game.workshop.draft.scale
+	check(game.workshop.handle_event(wheel), "Floor tile consumes wheel for resizing")
 	check(is_equal_approx(game.workshop.draft.scale, original_scale + game.S.FLOOR_STAMP_SCALE_STEP), "Wheel increases layout preview size")
 	check(game.workshop.scale_input.value == game.workshop.draft.scale and game.editor_zoom == original_zoom, "Wheel resize synchronizes inspector without zooming")
 	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
@@ -350,9 +354,96 @@ func run() -> void:
 	check(game.workshop.mode == "select" and not game.painting, "Escape cancels placement safely into selection")
 	check(game.workshop.select_tool.button_pressed and not game.workshop.place_tool.button_pressed, "Toolbar highlights active selection tool")
 	check(game.workshop.select_tool.icon != null and game.workshop.place_tool.icon != null, "Primary tools have vector icons")
+	game.workshop.choose_tile(atlas_entry)
 	game.workshop.use_stamp()
 	game.workshop.update_mode()
 	check(game.workshop.place_tool.button_pressed and not game.workshop.select_tool.button_pressed, "Placement tool highlight follows mode")
+	game.workshop.choose_entry(layout)
+	var before_layout: Dictionary = game.map.duplicate(true)
+	game.workshop.build_selected_layout()
+	check(Maps.validate(game.map) == "", "Layout builds valid terrain map")
+	game.check_routes()
+	check(game.status.text.begins_with("Routes checked"), "Generated layout routes are connected")
+	game.undo()
+	check(game.map == before_layout, "Building a layout can be undone")
+	var rejected_layouts := 0
+	for entry in game.workshop.room_layouts:
+		var generated: Dictionary = Maps.from_layout(entry.path, entry.frame, int(game.workshop.metadata[entry.path].frames))
+		if generated.name == "Untitled floor": rejected_layouts += 1
+		check(Maps.validate(generated) == "", "Generated layout validates: " + entry.name)
+		var connected := Maps.layout_reachable(generated, Vector2i(generated.spawn[0], generated.spawn[1]))
+		for cell in [generated.exit] + generated.enemies:
+			check(connected.has(Vector2i(cell[0], cell[1])), "Generated layout actors are reachable: " + entry.name)
+	game.replace_map(Maps.demo())
+	game.workshop.activate_select()
+	game.workshop.update_mode()
+	check(not game.workshop.delete_tool.disabled, "Delete tool is available without an object selection")
+	game.workshop.delete_tool.pressed.emit()
+	check(game.workshop.mode == "erase", "Delete activates click-to-erase tool")
+	var erase_event := InputEventMouseButton.new()
+	erase_event.pressed = true
+	erase_event.button_index = MOUSE_BUTTON_LEFT
+	erase_event.position = game.MAP_VIEW.get_center() + (game.center([11, 3]) - game.editor_center) * game.editor_zoom
+	game.workshop.handle_event(erase_event)
+	check(game.map.cells[3 * Maps.WIDTH + 11] == int(game.map.floors[3 * Maps.WIDTH + 11]), "Eraser removes wall and preserves stored floor")
+	game.undo()
+	check(game.map.cells[3 * Maps.WIDTH + 11] == 2, "Erased wall is undoable")
+	check(game.structural_floor(Vector2i(11, 3), Vector2(0.25, 0.25)) == 3, "Wall backing inherits wood on wood side")
+	check(game.structural_floor(Vector2i(11, 3), Vector2(0.75, 0.25)) == 1, "Wall backing inherits carpet on carpet side")
+	for segment in game.wall_segments(Vector2i(11, 3)):
+		check(Rect2(Vector2(11, 3) * game.SIZE, Vector2.ONE * game.SIZE).encloses(segment), "Wall geometry stays within cell bounds")
+	game.replace_map(Maps.blank())
+	var layered_cell := Vector2i(8, 8)
+	game.select_brush(7)
+	game.paint(layered_cell, false)
+	game.select_brush(2)
+	game.paint(layered_cell, false)
+	check(game.map.floors[8 * Maps.WIDTH + 8] == 3, "Building wall preserves wood floor layer")
+	game.select_brush(8)
+	game.paint(layered_cell, false)
+	check(game.map.cells[8 * Maps.WIDTH + 8] == 2 and game.map.floors[8 * Maps.WIDTH + 8] == 4, "Floor repaint does not remove wall")
+	game.paint(layered_cell, true)
+	check(game.map.cells[8 * Maps.WIDTH + 8] == 4, "Removing wall reveals exact repainted floor")
+	game.replace_map(Maps.blank())
+	# T junction: no overlapping cap rectangles, and a continuous crossbar.
+	for cell in [Vector2i(8, 8), Vector2i(7, 8), Vector2i(9, 8), Vector2i(8, 9)]:
+		game.map.cells[cell.y * Maps.WIDTH + cell.x] = 2
+	var junction: Array = game.wall_segments(Vector2i(8, 8))
+	check(junction.size() == 2 and junction[0].size.x == game.SIZE, "T junction uses one continuous crossbar")
+	check(not junction[0].intersection(junction[1]).has_area(), "Wall branches meet without overlapping caps")
+	check(is_equal_approx(junction[0].end.y, junction[1].position.y), "Wall branches meet without a gap")
+	game.map.cells[7 * Maps.WIDTH + 8] = 0
+	game.map.cells[8 * Maps.WIDTH + 9] = 0
+	var floor_bounds: Rect2 = game.structural_floor_rect(Vector2i(8, 8))
+	check(floor_bounds.position.y == 8.5 * game.SIZE and floor_bounds.end.x == 8.5 * game.SIZE, "Exterior floor stops at top and right wall centerlines")
+	game.workshop.show_room_layouts()
+	game.workshop.layouts_list.item_selected.emit(8)
+	var expected_layout: Dictionary = game.workshop.generated_layout.duplicate(true)
+	game.workshop.create_layout_button.pressed.emit()
+	check(game.map.cells == expected_layout.cells and game.map.name == expected_layout.name, "Dedicated create button builds exactly the previewed terrain")
+	check(game.workshop.library_page.visible and not game.workshop.layouts_page.visible, "Creation returns to editing with visible result")
+	for entry in game.workshop.filtered: check(entry.category != "Floor Plans", "Layout diagrams are excluded from assets")
+	game._process(0.25)
+	check(game.fps_label.text.begins_with("FPS: "), "FPS counter updates")
+	game.queue_redraw()
+	await process_frame
+	await process_frame
+	var outline_builds: int = game.wall_outline_builds
+	game.queue_redraw()
+	await process_frame
+	await process_frame
+	check(game.wall_outline_builds == outline_builds, "Unchanged frames reuse wall outlines")
+	check(rejected_layouts <= 5, "Outline-aware converter supports at least 340 layouts")
+	check(game.workshop.room_layouts.size() == 63, "Curated browser contains unique layout representatives")
+	check(game.workshop.find_children("*", "PopupPanel", true, false).is_empty(), "Build tools no longer use a trapping popup")
+	var section_toggle: CheckButton = game.workshop.construction_section.get_parent().get_child(game.workshop.construction_section.get_index() - 1)
+	section_toggle.button_pressed = true
+	await process_frame
+	await process_frame
+	check(game.workshop.window.get_global_rect().end.y <= 1080, "Expanded construction tools stay within screen")
+	section_toggle.button_pressed = false
+	check(not game.workshop.construction_section.visible, "Construction section can close directly")
 	game.queue_free()
+	print("Layouts without usable geometry: %d / %d" % [rejected_layouts, game.workshop.room_layouts.size()])
 	print("Smoke checks completed: %d failures" % failures)
 	quit(1 if failures else 0)

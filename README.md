@@ -138,12 +138,44 @@ The toolbar uses labeled vector icons for important actions, inspired by [Tiled'
 
 The current tool is highlighted and described above the panel. Save, Load, Undo, Redo, Playtest, rotation, duplication and deletion have icons alongside their labels. Selection-only apply controls are hidden while placing assets.
 
-### Default apartment
+### Default layout map
 
-New sessions open Night Shift Apartment: a living room, kitchen and bedroom connected by three working doors. Furniture is stored as selectable objects rather than terrain sofa cells: use Select, then click or drag a sofa, table, bed, drawer or desk. The supplied apartment floor-plan diagram is a selectable reference above the rooms. Structural walls, doors, spawn and enemies still use Build tools. Existing saved maps are unchanged; Build tools > Map options & help > Load demo layout loads the new apartment.
+The default is generated from frame 9 of the supplied Apartment 1 layout. The old furnished apartment and its floating reference diagram are removed. Floor-plan silhouettes and internal divisions are traced into basic floor and wall cells, connected with working doors. Exterior windows use glass artwork over blocking structural walls; they are not breakable windows.
+
+In **Room layouts**, select a frame and choose **Build this layout as a map**. This replaces the current floor in one undoable action. Layouts are no longer placed as decorative image stamps. The conversion adapts the diagram to the fixed terrain grid, so very small details are approximated. Floors and walls are editable through Build tools; window artwork is selectable.
 
 ### Object proportions and door collision
 
 Starter furniture and newly selected matching assets use shared `PROP_SCALE_OVERRIDES` in [scripts/game_settings.gd](scripts/game_settings.gd). The couch, table, bed and desk use native scale; the unusually long drawer asset uses 0.4. Existing saved object scales are preserved. Reload the demo to see corrected starter furniture.
 
 Door opening/closing changes state instantly. Closing is blocked only when an actor overlaps the door leaf plus their collision radius, rather than the entire surrounding tile. Yellow hinge/swing guides are removed. Actor collision checks include edge midpoints and center to catch thin obstacles.
+
+### Wall rendering and erasing
+
+Thin walls and doors inherit the surrounding floor material on each side rather than drawing a carpet square beneath every segment. Wall artwork repeats at a consistent scale inside the collision segments. **Delete** beside Select is an eraser tool: activate it and click a placed object or terrain cell. Ctrl+Z restores the edit; Esc returns to Select. Spawn and exit markers remain protected and can be moved with Build tools.
+
+### Layout perimeter correction
+
+Layout conversion no longer adds a second exterior wall row around walls already present in the source diagram. Rebuild a layout (or start a new session) to replace earlier generated geometry. Erasing walls, doors or floor cells now leaves empty space rather than inserting carpet. Spawn and exit floors are protected until their markers are moved; undo restores erased terrain.
+
+### Independent floors and structures
+
+Maps now save a separate floor layer. Painting a wall preserves its floor; repainting that floor preserves the wall. Deleting a wall, door or terrain furniture reveals the stored material instead of clearing it or inserting carpet. Select can target structures as well as asset objects. Older maps without a floor layer infer materials from neighboring floors once on load; previously deleted floor information cannot be recovered automatically. New layout perimeters stay inside the sampled footprint, and isolated wall cells render as small posts rather than protruding full-cell bars.
+
+### Dedicated layout browser
+
+Open **Layouts** in the top bar. This is separate from assets: choose a named layout/frame, inspect its generated terrain preview and door/window counts, then press **Create map from layout**. The preview and creation use the same map data; creation returns to editing and can be undone. Frames with too little usable floor are disabled with an explanation. Floor-plan diagrams are excluded from asset browsing.
+
+Walls now render their texture interior with an outline only on exposed geometry edges, avoiding baked sprite borders across L/T junctions.
+
+### Layout conversion and performance
+
+Layout conversion now floods background from the image boundary, preserving green interiors inside enclosed outlines. It crops unused margins and samples source areas rather than single pixels. Currently 340 of 345 frames generate usable maps; the remaining frames stay disabled with an explanation.
+
+Wall outlines are cached until terrain or wall dimensions change, and contiguous exposed edges are merged into lines instead of issuing per-pixel drawing commands each frame. The top-right FPS counter updates four times per second in both editing and gameplay.
+
+### Curated layouts and inline construction tools
+
+The layout browser contains **63 distinct representatives** instead of 345 frames. Generated maps are compared after normalizing floor finishes; variants differing by at most ten terrain cells are grouped. Source images are not deleted. Rebuild the curated list after changing the converter or adding layouts with `godot --headless --path . --script tools/curate_layouts.gd`.
+
+The Build tools popup is removed. Expand **Floors, walls & gameplay** in the right panel for floor materials, walls, doors, actors, room/fill tools, new/demo maps and route checking. Collapse the same heading to return the space to the library. Grid/Fit remain in the top bar, Delete remains beside Select, and furniture comes from the asset library; duplicate controls are removed.

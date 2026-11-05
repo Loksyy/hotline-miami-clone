@@ -64,6 +64,7 @@ const Workshop = preload("res://scripts/asset_workshop.gd")
 var workshop: Node
 
 func _ready() -> void:
+	Maps.ensure_floor_layer(map)
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sound = Sound.new()
 	add_child(sound)
@@ -92,6 +93,8 @@ func button_at(text: String, position: Vector2, action: Callable, width: float =
 	return button
 
 func build_ui() -> void:
+	fps_label = label_at("FPS: --", Vector2(1710, 76), 18)
+	fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mode_label = label_at("FLOOR DESIGNER", Vector2(420, 30), 18)
 	mode_label.hide()
 	hud = label_at("AFTER HOURS / 1989   •   DESIGN YOUR WAY IN", Vector2(32, 66), 17)
@@ -118,7 +121,7 @@ func select_brush(index: int) -> void:
 	if index != 2 and layout_tool == "outline": layout_tool = "paint"
 	brush = index
 	if status != null:
-		var hints := ["Void: drag to remove floor.", "Carpet: drag to paint. Shift+drag fills a room.", "Wall: drag to build connected walls. Shift+drag fills a rectangle.", "Spawn: click a floor to move the player start.", "Enemy: click an empty floor to add an enemy.", "Exit: click a floor to move the exit.", "Erase: removes enemies or replaces terrain with floor.", "Wood: drag to paint. Shift+drag fills a room.", "Tile: drag to paint. Shift+drag fills a room.", "Door: replace one wall cell; orientation follows neighboring walls.", "Sofa: adjacent cells combine into a couch."]
+		var hints := ["Void: drag to remove floor.", "Carpet: drag to paint. Shift+drag fills a room.", "Wall: drag to build connected walls. Shift+drag fills a rectangle.", "Spawn: click a floor to move the player start.", "Enemy: click an empty floor to add an enemy.", "Exit: click a floor to move the exit.", "Erase: removes enemies or clears terrain to empty space.", "Wood: drag to paint. Shift+drag fills a room.", "Tile: drag to paint. Shift+drag fills a room.", "Door: replace one wall cell; orientation follows neighboring walls.", "Sofa: adjacent cells combine into a couch."]
 		status.text = hints[index]
 	for i in palette.size():
 		palette[i].modulate = Color("60e4dc") if i == brush else Color.WHITE
@@ -134,7 +137,7 @@ func undo() -> void:
 	if not editing or history.is_empty(): return
 	future.append(map.duplicate(true))
 	map = history.pop_back()
-	if workshop != null: workshop.selected = -1; workshop.dragging = false
+	if workshop != null: workshop.selected = -1; workshop.selected_terrain = Vector2i(-1, -1); workshop.dragging = false
 	title_input.text = map.name
 	queue_redraw()
 
@@ -142,7 +145,7 @@ func redo() -> void:
 	if not editing or future.is_empty(): return
 	history.append(map.duplicate(true))
 	map = future.pop_back()
-	if workshop != null: workshop.selected = -1; workshop.dragging = false
+	if workshop != null: workshop.selected = -1; workshop.selected_terrain = Vector2i(-1, -1); workshop.dragging = false
 	title_input.text = map.name
 	queue_redraw()
 
@@ -150,7 +153,8 @@ func replace_map(value: Dictionary) -> void:
 	if not editing: return
 	snapshot()
 	map = value
-	if workshop != null: workshop.selected = -1; workshop.dragging = false
+	Maps.ensure_floor_layer(map)
+	if workshop != null: workshop.selected = -1; workshop.selected_terrain = Vector2i(-1, -1); workshop.dragging = false
 	title_input.text = map.name
 	status.text = "New layout ready. Undo restores the previous map."
 	queue_redraw()
@@ -287,6 +291,7 @@ func inside(cell: Vector2i) -> bool:
 	return cell.x >= 0 and cell.y >= 0 and cell.x < Maps.WIDTH and cell.y < Maps.HEIGHT
 
 func paint(cell: Vector2i, erase: bool) -> void:
+	Maps.ensure_floor_layer(map)
 	if not inside(cell): return
 	var coordinate := [cell.x, cell.y]
 	var tool := 6 if erase else brush
@@ -295,10 +300,17 @@ func paint(cell: Vector2i, erase: bool) -> void:
 		if not Maps.floor_tile(tile) and (coordinate == map.spawn or coordinate == map.exit or coordinate in map.enemies):
 			status.text = "Move or erase the entity before covering its floor."
 			return
-		map.cells[cell.y * Maps.WIDTH + cell.x] = tile
+		if tile in [0, 1, 3, 4]: map.floors[cell.y * Maps.WIDTH + cell.x] = tile
+		if not (tile in [0, 1, 3, 4] and map.cells[cell.y * Maps.WIDTH + cell.x] in [2, 5, 6]):
+			map.cells[cell.y * Maps.WIDTH + cell.x] = tile
 	elif tool == 6:
 		if coordinate in map.enemies: map.enemies.erase(coordinate)
-		else: map.cells[cell.y * Maps.WIDTH + cell.x] = 1
+		elif coordinate == map.spawn or coordinate == map.exit:
+			status.text = "Move the player start or exit before deleting its floor."
+		else:
+			var index := cell.y * Maps.WIDTH + cell.x
+			if map.cells[index] in [2, 5, 6]: map.cells[index] = int(map.floors[index])
+			else: map.cells[index] = 0; map.floors[index] = 0
 	else:
 		if not Maps.floor_tile(map.cells[cell.y * Maps.WIDTH + cell.x]):
 			status.text = "Entities need a floor tile."
@@ -380,6 +392,7 @@ func solid(point: Vector2) -> bool:
 	return not Maps.floor_tile(tile) and not (tile == 5 and open_doors.has(cell))
 
 func fill_area(start: Vector2i) -> void:
+	Maps.ensure_floor_layer(map)
 	var replacement := brush if brush <= 2 else brush - 4
 	if not Maps.floor_tile(replacement) or not inside(start):
 		status.text = "Fill: select carpet, wood, or tile first."
@@ -395,6 +408,7 @@ func fill_area(start: Vector2i) -> void:
 		visited[cell] = true
 		if map.cells[cell.y * Maps.WIDTH + cell.x] != original: continue
 		map.cells[cell.y * Maps.WIDTH + cell.x] = replacement
+		map.floors[cell.y * Maps.WIDTH + cell.x] = replacement
 		for offset in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]: pending.append(cell + offset)
 	status.text = "Room floor replaced. Ctrl+Z undoes the fill."
 	queue_redraw()
@@ -456,6 +470,10 @@ func fire() -> void:
 	traces.append({"a": player, "b": endpoint, "time": S.SHOT_TRACE_TIME, "color": Color("ffe7a5")})
 
 func _process(delta: float) -> void:
+	fps_update_time += delta
+	if fps_update_time >= 0.25:
+		fps_update_time = 0.0
+		fps_label.text = "FPS: %d" % Engine.get_frames_per_second()
 	delta = minf(delta, 0.05)
 	if workshop != null: workshop.tick(delta)
 	shake = move_toward(shake, 0, delta * S.SHAKE_DECAY)
@@ -815,23 +833,130 @@ func wall_connects(cell: Vector2i) -> bool:
 
 func wall_segments(cell: Vector2i) -> Array[Rect2]:
 	var thickness := clampf(S.WALL_THICKNESS, 2, SIZE)
-	var half := thickness / 2
-	var midpoint := Vector2(cell) * SIZE + Vector2.ONE * SIZE / 2
+	var half := thickness / 2.0
+	var origin := Vector2(cell) * SIZE
+	var middle := origin + Vector2.ONE * SIZE / 2.0
+	var left := wall_connects(cell + Vector2i.LEFT)
+	var right := wall_connects(cell + Vector2i.RIGHT)
+	var up := wall_connects(cell + Vector2i.UP)
+	var down := wall_connects(cell + Vector2i.DOWN)
 	var segments: Array[Rect2] = []
-	for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
-		if not wall_connects(cell + direction): continue
-		var endpoint := midpoint + Vector2(direction) * SIZE / 2
-		var low := midpoint.min(endpoint) - Vector2.ONE * half
-		var high := midpoint.max(endpoint) + Vector2.ONE * half
-		segments.append(Rect2(low, high - low).intersection(Rect2(Vector2(cell) * SIZE, Vector2.ONE * SIZE)))
-	if segments.is_empty():
-		segments.append(Rect2(midpoint - Vector2(SIZE / 2.0, half), Vector2(SIZE, thickness)))
+	# One continuous horizontal run owns the junction. Vertical branches butt
+	# against its edges, never overlap it with another textured end cap.
+	if left or right:
+		var x0 := origin.x if left else middle.x - half
+		var x1 := origin.x + SIZE if right else middle.x + half
+		segments.append(Rect2(Vector2(x0, middle.y - half), Vector2(x1 - x0, thickness)))
+		if up: segments.append(Rect2(Vector2(middle.x - half, origin.y), Vector2(thickness, SIZE / 2.0 - half)))
+		if down: segments.append(Rect2(Vector2(middle.x - half, middle.y + half), Vector2(thickness, SIZE / 2.0 - half)))
+	elif up or down:
+		var y0 := origin.y if up else middle.y - half
+		var y1 := origin.y + SIZE if down else middle.y + half
+		segments.append(Rect2(Vector2(middle.x - half, y0), Vector2(thickness, y1 - y0)))
+	else:
+		segments.append(Rect2(middle - Vector2.ONE * half, Vector2.ONE * thickness))
 	return segments
+
+func structural_floor(cell: Vector2i, quadrant: Vector2) -> int:
+	var point := Vector2(cell) + quadrant
+	var best := INF
+	var material := 0
+	for y in range(cell.y - 2, cell.y + 3):
+		for x in range(cell.x - 2, cell.x + 3):
+			var neighbor := Vector2i(x, y)
+			if not inside(neighbor): continue
+			var tile: int = map.cells[y * Maps.WIDTH + x]
+			if not Maps.floor_tile(tile) and tile != 0: continue
+			var distance := point.distance_squared_to(Vector2(neighbor) + Vector2.ONE * 0.5)
+			if distance < best:
+				best = distance
+				material = tile
+	return material
+
+func structural_floor_rect(cell: Vector2i) -> Rect2:
+	var origin := Vector2(cell) * SIZE
+	var low := origin
+	var high := origin + Vector2.ONE * SIZE
+	var midpoint := origin + Vector2.ONE * SIZE / 2.0
+	# Floor ends at the wall centerline on an exterior side. The wall itself
+	# covers the seam; no half-cell strip can remain outside the building.
+	for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		var neighbor: Vector2i = cell + direction
+		if inside(neighbor) and map.cells[neighbor.y * Maps.WIDTH + neighbor.x] != 0: continue
+		if direction == Vector2i.LEFT: low.x = midpoint.x
+		if direction == Vector2i.RIGHT: high.x = midpoint.x
+		if direction == Vector2i.UP: low.y = midpoint.y
+		if direction == Vector2i.DOWN: high.y = midpoint.y
+	return Rect2(low, high - low)
+
+func draw_structural_floor(cell: Vector2i) -> void:
+	var material: int = map.floors[cell.y * Maps.WIDTH + cell.x]
+	var rectangle := structural_floor_rect(cell)
+	if material != 0 and rectangle.has_area(): draw_floor(rectangle, material)
+
+var wall_outline_cache: Dictionary = {}
+var wall_outline_hash := 0
+var wall_outline_builds := 0
+var fps_label: Label
+var fps_update_time := 0.0
 
 func draw_wall(_rectangle: Rect2, cell: Vector2i) -> void:
 	for segment in wall_segments(cell):
-		var key := "wall_v" if segment.size.y > segment.size.x else "wall"
-		draw_texture_rect(art.frame(key), segment, false)
+		var vertical := segment.size.y > segment.size.x
+		var texture: Texture2D = art.frame("wall_v" if vertical else "wall")
+		var native := texture.get_size()
+		var scale_value := S.WALL_THICKNESS / (native.x if vertical else native.y)
+		var period := (native.y if vertical else native.x) * scale_value
+		var start := segment.position.y if vertical else segment.position.x
+		var finish := segment.end.y if vertical else segment.end.x
+		var cursor := start
+		while cursor < finish:
+			var phase := fposmod(cursor, period)
+			var length := minf(finish - cursor, period - phase)
+			var target := Rect2(Vector2(segment.position.x, cursor), Vector2(segment.size.x, length)) if vertical else Rect2(Vector2(cursor, segment.position.y), Vector2(length, segment.size.y))
+			var source := Rect2(Vector2(0, phase / scale_value), Vector2(native.x, length / scale_value)) if vertical else Rect2(Vector2(phase / scale_value, 0), Vector2(length / scale_value, native.y))
+			# Use the texture interior; its baked edge stripes would make false
+			# end caps at every L/T junction. Outline the joined wall below.
+			if vertical:
+				source.position.x += 2
+				source.size.x -= 4
+			else:
+				source.position.y += 2
+				source.size.y -= 4
+			draw_texture_rect_region(texture, target, source)
+			cursor += length
+	if not wall_outline_cache.has(cell):
+		wall_outline_builds += 1
+		var edges: Array = []
+		for segment in wall_segments(cell):
+			for side in 4:
+				var horizontal := side < 2
+				var normal: Vector2 = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT][side]
+				var start := segment.position
+				if side == 1: start.y = segment.end.y
+				if side == 3: start.x = segment.end.x
+				var tangent := Vector2.RIGHT if horizontal else Vector2.DOWN
+				var extent := segment.size.x if horizontal else segment.size.y
+				var run_start := -1
+				for offset in range(int(ceil(extent)) + 1):
+					var exposed := offset < int(ceil(extent)) and not wall_geometry_at(start + tangent * (offset + 0.5) + normal * 0.1)
+					if exposed and run_start < 0: run_start = offset
+					if not exposed and run_start >= 0:
+						edges.append([start + tangent * run_start - normal * 0.5, start + tangent * minf(offset, extent) - normal * 0.5])
+						run_start = -1
+		wall_outline_cache[cell] = edges
+	for edge in wall_outline_cache[cell]: draw_line(edge[0], edge[1], Color("fff6d5"), 1.0)
+
+func wall_geometry_at(point: Vector2) -> bool:
+	var cell := Vector2i((point / SIZE).floor())
+	if not inside(cell): return false
+	var tile: int = map.cells[cell.y * Maps.WIDTH + cell.x]
+	if tile == 5: return door_leaf_rect(cell).has_point(point)
+	if tile != 2: return false
+	for segment in wall_segments(cell):
+		if segment.has_point(point): return true
+	return false
+
 func draw_furniture() -> void:
 	# Adjacent sofa cells form one piece of furniture rather than tiny repeated couches.
 	var used: Dictionary = {}
@@ -847,6 +972,10 @@ func draw_furniture() -> void:
 			draw_rect(Rect2(rectangle.position + Vector2(2, 3), rectangle.size), Color(0, 0, 0, 0.4))
 			draw_texture_rect(art.frame("sofa"), rectangle, false)
 func _draw() -> void:
+	var geometry_hash: int = hash([map.cells, S.WALL_THICKNESS, S.DOOR_LEAF_THICKNESS])
+	if geometry_hash != wall_outline_hash:
+		wall_outline_hash = geometry_hash
+		wall_outline_cache.clear()
 	draw_rect(Rect2(0, 0, 1280, 1080), S.EDITOR_CANVAS_COLOR)
 	draw_rect(Rect2(1280, 0, 640, 1080), Color("101725"))
 	var jitter := Vector2(randf_range(-shake, shake), randf_range(-shake, shake)) * S.SCREEN_SHAKE_SCALE if not editing else Vector2.ZERO
@@ -867,8 +996,8 @@ func _draw() -> void:
 			var rectangle := Rect2(Vector2(x, y) * SIZE, Vector2.ONE * SIZE)
 			if tile == 0:
 				if not editing: draw_rect(rectangle, S.EDITOR_CANVAS_COLOR)
-			elif tile == 2:
-				draw_floor(rectangle, 1)
+			elif tile in [2, 5]:
+				draw_structural_floor(Vector2i(x, y))
 			else:
 				draw_floor(rectangle, tile if tile in [1, 3, 4] else 1)
 			if editing and show_grid: draw_rect(rectangle, Color(0.6, 0.7, 0.9, 0.12), false)

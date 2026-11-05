@@ -1,0 +1,569 @@
+[
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "Apartment1 / 1",
+		"path": "Floor Plans/sprApartment1_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "Apartment1 / 2",
+		"path": "Floor Plans/sprApartment1_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "Apartment1 / 9",
+		"path": "Floor Plans/sprApartment1_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "Apartment2 / 1",
+		"path": "Floor Plans/sprApartment2_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "Apartment2 / 2",
+		"path": "Floor Plans/sprApartment2_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 5,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "Apartment2 / 6",
+		"path": "Floor Plans/sprApartment2_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "Apartment2 / 9",
+		"path": "Floor Plans/sprApartment2_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 84.0,
+		"name": "Arcade / 1",
+		"path": "Floor Plans/sprArcade_strip16.png",
+		"width": 1440.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 16.0,
+		"height": 84.0,
+		"name": "Arcade / 2",
+		"path": "Floor Plans/sprArcade_strip16.png",
+		"width": 1440.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 84.0,
+		"name": "Arcade / 9",
+		"path": "Floor Plans/sprArcade_strip16.png",
+		"width": 1440.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 2.0,
+		"height": 512.0,
+		"name": "ArcadeLight1 / 1",
+		"path": "Floor Plans/sprArcadeLight1_strip2.png",
+		"width": 1008.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 2.0,
+		"height": 576.0,
+		"name": "ArcadeLight2 / 1",
+		"path": "Floor Plans/sprArcadeLight2_strip2.png",
+		"width": 1152.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 24.0,
+		"height": 140.0,
+		"name": "BossClub / 1",
+		"path": "Floor Plans/sprBossClub_strip24.png",
+		"width": 3360.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 24.0,
+		"height": 140.0,
+		"name": "BossClub / 2",
+		"path": "Floor Plans/sprBossClub_strip24.png",
+		"width": 3360.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 24.0,
+		"height": 140.0,
+		"name": "BossClub / 9",
+		"path": "Floor Plans/sprBossClub_strip24.png",
+		"width": 3360.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 9,
+		"frames": 24.0,
+		"height": 140.0,
+		"name": "BossClub / 10",
+		"path": "Floor Plans/sprBossClub_strip24.png",
+		"width": 3360.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 16,
+		"frames": 24.0,
+		"height": 140.0,
+		"name": "BossClub / 17",
+		"path": "Floor Plans/sprBossClub_strip24.png",
+		"width": 3360.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 8.0,
+		"height": 140.0,
+		"name": "BossClub2 / 2",
+		"path": "Floor Plans/sprBossClub2_strip8.png",
+		"width": 1120.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 32.0,
+		"height": 84.0,
+		"name": "Building / 1",
+		"path": "Floor Plans/sprBuilding_strip32.png",
+		"width": 3712.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 32.0,
+		"height": 84.0,
+		"name": "Building / 2",
+		"path": "Floor Plans/sprBuilding_strip32.png",
+		"width": 3712.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 32.0,
+		"height": 84.0,
+		"name": "Building / 9",
+		"path": "Floor Plans/sprBuilding_strip32.png",
+		"width": 3712.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 16,
+		"frames": 32.0,
+		"height": 84.0,
+		"name": "Building / 17",
+		"path": "Floor Plans/sprBuilding_strip32.png",
+		"width": 3712.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 24,
+		"frames": 32.0,
+		"height": 84.0,
+		"name": "Building / 25",
+		"path": "Floor Plans/sprBuilding_strip32.png",
+		"width": 3712.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 84.0,
+		"name": "Hospital / 1",
+		"path": "Floor Plans/sprHospital_strip16.png",
+		"width": 1664.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 84.0,
+		"name": "Hospital / 9",
+		"path": "Floor Plans/sprHospital_strip16.png",
+		"width": 1664.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 116.0,
+		"name": "Hotel / 1",
+		"path": "Floor Plans/sprHotel_strip16.png",
+		"width": 1536.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 116.0,
+		"name": "Hotel / 9",
+		"path": "Floor Plans/sprHotel_strip16.png",
+		"width": 1536.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "House1 / 1",
+		"path": "Floor Plans/sprHouse1_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "House1 / 2",
+		"path": "Floor Plans/sprHouse1_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 64.0,
+		"name": "House1 / 9",
+		"path": "Floor Plans/sprHouse1_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 72.0,
+		"name": "House2 / 1",
+		"path": "Floor Plans/sprHouse2_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 72.0,
+		"name": "House2 / 9",
+		"path": "Floor Plans/sprHouse2_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 24.0,
+		"height": 80.0,
+		"name": "House3 / 1",
+		"path": "Floor Plans/sprHouse3_strip24.png",
+		"width": 2016.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 24.0,
+		"height": 80.0,
+		"name": "House3 / 9",
+		"path": "Floor Plans/sprHouse3_strip24.png",
+		"width": 2016.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 16,
+		"frames": 24.0,
+		"height": 80.0,
+		"name": "House3 / 17",
+		"path": "Floor Plans/sprHouse3_strip24.png",
+		"width": 2016.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 8.0,
+		"height": 96.0,
+		"name": "House4 / 1",
+		"path": "Floor Plans/sprHouse4_strip8.png",
+		"width": 768.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 8.0,
+		"height": 96.0,
+		"name": "House4 / 2",
+		"path": "Floor Plans/sprHouse4_strip8.png",
+		"width": 768.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 84.0,
+		"name": "House5 / 1",
+		"path": "Floor Plans/sprHouse5_strip16.png",
+		"width": 1728.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 84.0,
+		"name": "House5 / 9",
+		"path": "Floor Plans/sprHouse5_strip16.png",
+		"width": 1728.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 160.0,
+		"name": "Mansion / 1",
+		"path": "Floor Plans/sprMansion_strip16.png",
+		"width": 2048.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 3,
+		"frames": 16.0,
+		"height": 160.0,
+		"name": "Mansion / 4",
+		"path": "Floor Plans/sprMansion_strip16.png",
+		"width": 2048.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 6,
+		"frames": 16.0,
+		"height": 160.0,
+		"name": "Mansion / 7",
+		"path": "Floor Plans/sprMansion_strip16.png",
+		"width": 2048.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 160.0,
+		"name": "Mansion / 9",
+		"path": "Floor Plans/sprMansion_strip16.png",
+		"width": 2048.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 8.0,
+		"height": 64.0,
+		"name": "NoodleShop / 1",
+		"path": "Floor Plans/sprNoodleShop_strip8.png",
+		"width": 672.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 8.0,
+		"height": 64.0,
+		"name": "NoodleShop / 2",
+		"path": "Floor Plans/sprNoodleShop_strip8.png",
+		"width": 672.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 24.0,
+		"height": 64.0,
+		"name": "Office / 1",
+		"path": "Floor Plans/sprOffice_strip24.png",
+		"width": 2016.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 24.0,
+		"height": 64.0,
+		"name": "Office / 2",
+		"path": "Floor Plans/sprOffice_strip24.png",
+		"width": 2016.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 24.0,
+		"height": 64.0,
+		"name": "Office / 9",
+		"path": "Floor Plans/sprOffice_strip24.png",
+		"width": 2016.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 9,
+		"frames": 24.0,
+		"height": 64.0,
+		"name": "Office / 10",
+		"path": "Floor Plans/sprOffice_strip24.png",
+		"width": 2016.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 16,
+		"frames": 24.0,
+		"height": 64.0,
+		"name": "Office / 17",
+		"path": "Floor Plans/sprOffice_strip24.png",
+		"width": 2016.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 17,
+		"frames": 24.0,
+		"height": 64.0,
+		"name": "Office / 18",
+		"path": "Floor Plans/sprOffice_strip24.png",
+		"width": 2016.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 8.0,
+		"height": 68.0,
+		"name": "PhoneLevel / 1",
+		"path": "Floor Plans/sprPhoneLevel_strip8.png",
+		"width": 672.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 24.0,
+		"height": 112.0,
+		"name": "PoliceHQ / 1",
+		"path": "Floor Plans/sprPoliceHQ_strip24.png",
+		"width": 2880.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 24.0,
+		"height": 112.0,
+		"name": "PoliceHQ / 2",
+		"path": "Floor Plans/sprPoliceHQ_strip24.png",
+		"width": 2880.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 24.0,
+		"height": 112.0,
+		"name": "PoliceHQ / 9",
+		"path": "Floor Plans/sprPoliceHQ_strip24.png",
+		"width": 2880.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 16,
+		"frames": 24.0,
+		"height": 112.0,
+		"name": "PoliceHQ / 17",
+		"path": "Floor Plans/sprPoliceHQ_strip24.png",
+		"width": 2880.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 1.0,
+		"height": 463.0,
+		"name": "SewerShadow / 1",
+		"path": "Floor Plans/sprSewerShadow.png",
+		"width": 609.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 80.0,
+		"name": "SwatLevel / 1",
+		"path": "Floor Plans/sprSwatLevel_strip16.png",
+		"width": 1584.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 16.0,
+		"height": 80.0,
+		"name": "SwatLevel / 2",
+		"path": "Floor Plans/sprSwatLevel_strip16.png",
+		"width": 1584.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 80.0,
+		"name": "SwatLevel / 9",
+		"path": "Floor Plans/sprSwatLevel_strip16.png",
+		"width": 1584.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 0,
+		"frames": 16.0,
+		"height": 68.0,
+		"name": "Trainstation / 1",
+		"path": "Floor Plans/sprTrainstation_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 1,
+		"frames": 16.0,
+		"height": 68.0,
+		"name": "Trainstation / 2",
+		"path": "Floor Plans/sprTrainstation_strip16.png",
+		"width": 1344.0
+	},
+	{
+		"category": "Room layouts",
+		"frame": 8,
+		"frames": 16.0,
+		"height": 68.0,
+		"name": "Trainstation / 9",
+		"path": "Floor Plans/sprTrainstation_strip16.png",
+		"width": 1344.0
+	}
+]

@@ -1,13 +1,14 @@
 extends RefCounted
 ## Player preferences, saved separately from developer tuning in game_settings.gd.
+const S = preload("res://scripts/settings/game_settings.gd")
 const SAVE_PATH := "user://preferences.cfg"
 var storage_path := SAVE_PATH
-var volume := 0.8
-var show_fps := true
-var screen_shake := true
-var vsync := true
-var frame_limit := 120
-var fullscreen := true
+var volume := S.DEFAULT_VOLUME
+var show_fps := S.DEFAULT_SHOW_FPS
+var screen_shake := S.DEFAULT_SCREEN_SHAKE
+var vsync := S.DEFAULT_VSYNC
+var frame_limit := S.DEFAULT_FRAME_LIMIT
+var fullscreen := S.DEFAULT_FULLSCREEN
 
 func load_settings() -> void:
 	var config := ConfigFile.new()
@@ -18,7 +19,7 @@ func load_settings() -> void:
 		vsync = bool(config.get_value("preferences", "vsync", vsync))
 		frame_limit = int(config.get_value("preferences", "frame_limit", frame_limit))
 		fullscreen = bool(config.get_value("preferences", "fullscreen", fullscreen))
-	if frame_limit not in [0, 60, 120, 144, 240]: frame_limit = 120
+	if frame_limit not in S.FRAME_LIMIT_OPTIONS: frame_limit = S.DEFAULT_FRAME_LIMIT
 	apply()
 
 func apply() -> void:

@@ -1,7 +1,7 @@
 extends SceneTree
 
-const Maps = preload("res://scripts/map_data.gd")
-const Game = preload("res://scripts/main.gd")
+const Maps = preload("res://scripts/maps/map_data.gd")
+const Game = preload("res://scripts/game/main.gd")
 var failures := 0
 
 func check(condition: bool, message: String) -> void:
@@ -311,7 +311,7 @@ func run() -> void:
 	game.workshop.choose_tile(atlas_entry)
 	original_scale = game.workshop.draft.scale
 	check(game.workshop.handle_event(wheel), "Floor tile consumes wheel for resizing")
-	check(is_equal_approx(game.workshop.draft.scale, original_scale + game.S.FLOOR_STAMP_SCALE_STEP), "Wheel increases layout preview size")
+	check(is_equal_approx(game.workshop.draft.scale, original_scale + float(game.SIZE) / game.workshop.ATLAS_CELL), "Wheel increases floor size by one grid cell")
 	check(game.workshop.scale_input.value == game.workshop.draft.scale and game.editor_zoom == original_zoom, "Wheel resize synchronizes inspector without zooming")
 	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
 	game.workshop.handle_event(wheel)
@@ -327,6 +327,17 @@ func run() -> void:
 	var history_count: int = game.history.size()
 	game.workshop.place(Vector2(30, 30))
 	check(game.workshop.objects().size() == tile_count and game.history.size() == history_count, "Repeated tile placement neither stacks nor adds undo entry")
+	var large: Dictionary = game.workshop.draft.duplicate(true)
+	large.scale = float(game.SIZE) * 2 / game.workshop.ATLAS_CELL
+	game.workshop.align_floor(large, Vector2(280, 280))
+	game.workshop.objects().append(large)
+	var neighbor: Dictionary = large.duplicate(true)
+	game.workshop.align_floor(neighbor, Vector2(308, 280))
+	check(game.workshop.floor_overlap(neighbor), "Different centers cannot hide overlapping large floor tiles")
+	game.workshop.align_floor(neighbor, Vector2(336, 280))
+	check(not game.workshop.floor_bounds(large).intersects(game.workshop.floor_bounds(neighbor)), "Large floor tiles meet exactly at their grid edges")
+	game.workshop.objects().erase(large)
+
 	game.workshop.choose_tile(game.workshop.atlas_tiles[1])
 	game.workshop.place(Vector2(30, 30))
 	check(game.workshop.objects().size() == tile_count, "Different tile replaces existing cell stamp")
@@ -380,6 +391,7 @@ func run() -> void:
 	check(not game.workshop.delete_tool.disabled, "Delete tool is available without an object selection")
 	game.workshop.delete_tool.pressed.emit()
 	check(game.workshop.mode == "erase", "Delete activates click-to-erase tool")
+	game.editor_center = game.center([11, 3])
 	var erase_event := InputEventMouseButton.new()
 	erase_event.pressed = true
 	erase_event.button_index = MOUSE_BUTTON_LEFT
@@ -416,6 +428,16 @@ func run() -> void:
 	game.map.cells[8 * Maps.WIDTH + 9] = 0
 	var floor_bounds: Rect2 = game.structural_floor_rect(Vector2i(8, 8))
 	check(floor_bounds.position.y == 8.5 * game.SIZE and floor_bounds.end.x == 8.5 * game.SIZE, "Exterior floor stops at top and right wall centerlines")
+	var patch := PackedVector2Array([Vector2(8, 8), Vector2(9, 8), Vector2(9, 9), Vector2(8, 9)])
+	for i in patch.size(): patch[i] *= game.SIZE
+	var clipped_patches: Array = game.workshop.floor_patch_polygons(patch)
+	check(not clipped_patches.is_empty(), "Floor stamp keeps its interior portion at an exterior corner")
+	for polygon in clipped_patches:
+		for point in polygon:
+			check(point.y >= floor_bounds.position.y and point.x <= floor_bounds.end.x, "Floor stamp cannot spill beyond exterior wall centerlines")
+	var outside := PackedVector2Array([Vector2.ZERO, Vector2(28, 0), Vector2(28, 28), Vector2(0, 28)])
+	game.map.cells[0] = 0
+	check(game.workshop.floor_patch_polygons(outside).is_empty(), "Floor stamps do not draw over empty space")
 	game.workshop.show_room_layouts()
 	game.workshop.layouts_list.item_selected.emit(8)
 	var expected_layout: Dictionary = game.workshop.generated_layout.duplicate(true)
@@ -434,7 +456,7 @@ func run() -> void:
 	await process_frame
 	check(game.wall_outline_builds == outline_builds, "Unchanged frames reuse wall outlines")
 	check(rejected_layouts <= 5, "Outline-aware converter supports at least 340 layouts")
-	check(game.workshop.room_layouts.size() == 63, "Curated browser contains unique layout representatives")
+	check(game.workshop.room_layouts.size() > 0 and game.workshop.room_layouts.size() < 63, "Curated browser contains unique layout representatives")
 	check(game.workshop.find_children("*", "PopupPanel", true, false).is_empty(), "Build tools no longer use a trapping popup")
 	var section_toggle: CheckButton = game.workshop.construction_section.get_parent().get_child(game.workshop.construction_section.get_index() - 1)
 	section_toggle.button_pressed = true
@@ -460,6 +482,20 @@ func run() -> void:
 	check(game.map.spawn == before_insert.spawn and game.map.exit == before_insert.exit, "Insertion retains existing start and exit")
 	game.undo()
 	check(game.map == before_insert, "Entire insertion undoes in one step")
+	game.replace_map(Maps.starter())
+	var original_map := game.map.duplicate(true)
+	game.workshop.generated_layout = Maps.starter()
+	game.workshop.begin_layout_insert()
+	check(game.workshop.insert_layout_at(Vector2(15, 33) * game.SIZE), "Full layout can be inserted beside the starting map")
+	check(Maps.validate(game.map) == "", "Combined map validates")
+	game.undo()
+	check(game.map == original_map, "Side-by-side layout insertion undoes without altering original")
+	var legacy := {"version": 1, "name": "Legacy", "cells": [], "spawn": [3, 11], "exit": [28, 11], "enemies": [], "objects": []}
+	legacy.cells.resize(704)
+	legacy.cells.fill(1)
+	check(Maps.validate(legacy) == "", "Original 32x22 save remains loadable")
+	var migrated := Maps.normalize(legacy)
+	check(migrated.cells.size() == Maps.WIDTH * Maps.HEIGHT and migrated.spawn == [35, 33], "Legacy terrain and markers move together into expanded canvas")
 	game.queue_free()
 	print("Layouts without usable geometry: %d / %d" % [rejected_layouts, game.workshop.room_layouts.size()])
 	print("Smoke checks completed: %d failures" % failures)

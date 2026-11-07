@@ -53,7 +53,7 @@ static func convert_layout(asset: String, frame: int, frames: int) -> Dictionary
 	var bounds := high - low
 	var occupied: Dictionary = {}
 	var walls: Dictionary = {}
-	var scale := minf(26.0 / bounds.x, 18.0 / bounds.y)
+	var scale := minf(S.LAYOUT_MAX_WIDTH / bounds.x, S.LAYOUT_MAX_HEIGHT / bounds.y)
 	var size := Vector2i(maxi(3, int(bounds.x * scale)), maxi(3, int(bounds.y * scale)))
 	var origin := Vector2i((WIDTH - size.x) / 2, (HEIGHT - size.y) / 2)
 	for y in size.y:
@@ -122,8 +122,8 @@ static func convert_layout(asset: String, frame: int, frames: int) -> Dictionary
 	map.spawn = [start.x, start.y]
 	var finish: Vector2i = accessible.back()
 	map.exit = [finish.x, finish.y]
-	for fraction in [0.35, 0.65]:
-		var cell: Vector2i = accessible[int((accessible.size() - 1) * fraction)]
+	for fraction in S.LAYOUT_ENEMY_POSITIONS:
+		var cell: Vector2i = accessible[int((accessible.size() - 1) * clampf(fraction, 0.0, 1.0))]
 		var coordinate := [cell.x, cell.y]
 		if coordinate != map.spawn and coordinate != map.exit and coordinate not in map.enemies: map.enemies.append(coordinate)
 	# Alternate basic floor finishes across rooms/sections.
@@ -144,8 +144,8 @@ static func convert_layout(asset: String, frame: int, frames: int) -> Dictionary
 	# Window artwork overlays exterior structural walls, which retain collision.
 	for y in range(2, HEIGHT - 2):
 		for x in range(3, WIDTH - 3):
-			if map.objects.size() >= 3: break
-			if x % 5 != 0 or map.cells[y * WIDTH + x] != 2: continue
+			if map.objects.size() >= S.LAYOUT_MAX_WINDOWS: break
+			if x % maxi(1, S.LAYOUT_WINDOW_SPACING) != 0 or map.cells[y * WIDTH + x] != 2: continue
 			if map.cells[(y - 1) * WIDTH + x] == 0 and floor_tile(map.cells[(y + 1) * WIDTH + x]) and map.cells[y * WIDTH + x - 1] == 2 and map.cells[y * WIDTH + x + 1] == 2:
 				map.objects.append(prop("Walls/sprGlassPanelH.png", Vector2(x + 0.5, y + 0.5) * TILE, 1.0, 2, false))
 	return map

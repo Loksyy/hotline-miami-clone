@@ -4,6 +4,7 @@ var game: Node
 var overlay: ColorRect
 var home: VBoxContainer
 var settings_page: VBoxContainer
+var lab: VBoxContainer
 var heading: Label
 var editor_button: Button
 
@@ -36,6 +37,7 @@ func _ready() -> void:
 	home.add_child(heading)
 	add_button("Resume [Esc]", close_menu, home)
 	add_button("Settings", func(): home.hide(); settings_page.show(), home)
+	add_button("Developer Lab", func(): home.hide(); lab.show(), home)
 	editor_button = add_button("Return to editor", return_to_editor, home)
 	add_button("Exit game", func(): game.preferences.save(); get_tree().quit(), home)
 	var hint := Label.new()
@@ -61,12 +63,16 @@ func _ready() -> void:
 	add_toggle("Fullscreen", "fullscreen")
 	add_toggle("VSync", "vsync")
 	var limit := OptionButton.new()
-	var limits := [60, 120, 144, 240, 0]
+	var limits: Array = preload("res://scripts/settings/game_settings.gd").FRAME_LIMIT_OPTIONS
 	for value in limits: limit.add_item("FPS limit: " + ("Unlimited" if value == 0 else str(value)))
 	limit.select(limits.find(game.preferences.frame_limit))
 	limit.item_selected.connect(func(index): game.preferences.frame_limit = limits[index]; game.preferences.apply())
 	settings_page.add_child(limit)
 	add_button("Back", func(): game.preferences.save(); settings_page.hide(); home.show(), settings_page)
+	lab = preload("res://scripts/ui/developer_lab.gd").new()
+	pages.add_child(lab)
+	lab.back_requested.connect(func(): lab.hide(); home.show())
+	lab.hide()
 	overlay.hide()
 
 func add_button(text: String, action: Callable, parent: Node) -> Button:
@@ -88,7 +94,9 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		if game.dialog.visible: return
 		if overlay.visible:
-			if settings_page.visible:
+			if lab.visible:
+				lab.hide(); home.show()
+			elif settings_page.visible:
 				game.preferences.save(); settings_page.hide(); home.show()
 			else: close_menu()
 		else: open_menu()
@@ -99,7 +107,7 @@ func open_menu() -> void:
 	game.rectangle_mode = false
 	game.workshop.dragging = false
 	game.workshop.activate_select()
-	home.show(); settings_page.hide(); overlay.show()
+	home.show(); settings_page.hide(); lab.hide(); overlay.show()
 	editor_button.text = "Back to editor" if game.editing else "Return to editor"
 	get_tree().paused = true
 

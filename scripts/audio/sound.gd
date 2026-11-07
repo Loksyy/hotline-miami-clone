@@ -1,5 +1,5 @@
 extends Node
-const S = preload("res://scripts/game_settings.gd")
+const S = preload("res://scripts/settings/game_settings.gd")
 
 var sounds: Dictionary = {}
 var muted := not S.SOUND_ENABLED

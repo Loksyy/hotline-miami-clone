@@ -25,7 +25,7 @@ static func demo() -> Dictionary:
 	return map
 
 static func starter() -> Dictionary:
-	return from_layout("Floor Plans/sprApartment1_strip16.png", 8, 16)
+	return from_layout(S.DEFAULT_LAYOUT_ASSET, S.DEFAULT_LAYOUT_FRAME, S.DEFAULT_LAYOUT_FRAMES)
 
 static func ensure_floor_layer(map: Dictionary) -> void:
 	if map.has("floors"): return
@@ -59,16 +59,43 @@ static func _valid_cell(value: Variant) -> bool:
 			return false
 	return value[0] >= 0 and value[0] < WIDTH and value[1] >= 0 and value[1] < HEIGHT
 
+# Upgrade original 32x22 saves into the center of the larger canvas.
+static func expand_legacy(value: Dictionary) -> Dictionary:
+	if not value.get("cells") is Array or value.cells.size() != 704: return value
+	var result := value.duplicate(true)
+	var offset := Vector2i((WIDTH - 32) / 2, (HEIGHT - 22) / 2)
+	for key in ["cells", "floors"]:
+		if not result.has(key): continue
+		if not result[key] is Array or result[key].size() != 704: continue
+		var expanded: Array = []
+		expanded.resize(WIDTH * HEIGHT)
+		expanded.fill(0)
+		for y in 22:
+			for x in 32: expanded[(y + offset.y) * WIDTH + x + offset.x] = result[key][y * 32 + x]
+		result[key] = expanded
+	for key in ["spawn", "exit", "enemies"]:
+		var positions: Array = result.get(key, []) if key == "enemies" else [result.get(key)]
+		for cell in positions:
+			if cell is Array and cell.size() == 2 and numeric(cell[0]) and numeric(cell[1]):
+				cell[0] += offset.x
+				cell[1] += offset.y
+	for item in result.get("objects", []):
+		if item is Dictionary and item.get("pos") is Array and item.pos.size() == 2 and numeric(item.pos[0]) and numeric(item.pos[1]):
+			item.pos[0] += offset.x * TILE
+			item.pos[1] += offset.y * TILE
+	return result
+
 static func validate(value: Variant) -> String:
 	if not value is Dictionary:
 		return "Map must be a JSON object."
+	value = expand_legacy(value)
 	for key in ["version", "name", "cells", "spawn", "enemies", "exit"]:
 		if not value.has(key):
 			return "Missing field: " + key
 	if value.version != 1 or not value.name is String:
 		return "Unsupported map version or invalid name."
 	if not value.cells is Array or value.cells.size() != WIDTH * HEIGHT:
-		return "Map must contain exactly 704 tiles."
+		return "Map must contain exactly %d tiles." % (WIDTH * HEIGHT)
 	for cell in value.cells:
 		if not (cell is int or cell is float) or cell != int(cell) or int(cell) < 0 or int(cell) > 6:
 			return "Invalid tile type."
@@ -119,7 +146,7 @@ static func numeric(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value))
 
 static func normalize(value: Dictionary) -> Dictionary:
-	var result := value.duplicate(true)
+	var result := expand_legacy(value).duplicate(true)
 	for i in result.cells.size():
 		result.cells[i] = int(result.cells[i])
 	for cell in [result.spawn, result.exit] + result.enemies:

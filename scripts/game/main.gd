@@ -1,23 +1,24 @@
 extends Node2D
 
 const WallGeometry = preload("res://scripts/rendering/wall_geometry.gd")
-const Maps = preload("res://scripts/map_data.gd")
+const Maps = preload("res://scripts/maps/map_data.gd")
 const ORIGIN := Vector2(32, 108)
 const SIZE := 28
-const S = preload("res://scripts/game_settings.gd")
-const Art = preload("res://scripts/game_art.gd")
+const S = preload("res://scripts/settings/game_settings.gd")
+const Art = preload("res://scripts/rendering/game_art.gd")
 var art := Art.new()
 var render_origin := ORIGIN
 const MAP_VIEW := Rect2(32, 108, 1216, 940)
 var editor_zoom := S.EDITOR_DEFAULT_ZOOM
-var editor_center := Vector2(448, 308)
+var editor_center := Vector2(Maps.WIDTH, Maps.HEIGHT) * SIZE / 2.0
 var play_center := Vector2.ZERO
+var look_offset := Vector2.ZERO
 var view_zoom := 1.0
 var show_grid := S.EDITOR_GRID_VISIBLE
 var player_walk := 0.0
 var player_moving := false
 var attack_animation := 0.0
-const Sound = preload("res://scripts/sound.gd")
+const Sound = preload("res://scripts/audio/sound.gd")
 var sound: Node
 var navigation := AStarGrid2D.new()
 var open_doors: Dictionary = {}
@@ -61,14 +62,15 @@ var toggle_button: Button
 var palette: Array = []
 var dialog: FileDialog
 var file_action := ""
-const Preferences = preload("res://scripts/runtime_settings.gd")
+const Preferences = preload("res://scripts/settings/runtime_settings.gd")
 const PauseMenu = preload("res://scripts/ui/pause_menu.gd")
 var preferences := Preferences.new()
 var pause_menu: CanvasLayer
-const Workshop = preload("res://scripts/asset_workshop.gd")
+const Workshop = preload("res://scripts/editor/asset_workshop.gd")
 var workshop: Node
 
 func _ready() -> void:
+	preload("res://scripts/settings/live_tuning.gd").initialize()
 	preferences.load_settings()
 	Maps.ensure_floor_layer(map)
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -265,9 +267,10 @@ func reset_game() -> void:
 	rebuild_navigation()
 	player = center(map.spawn)
 	play_center = player
+	look_offset = Vector2.ZERO
 	enemies.clear()
 	for cell in map.enemies:
-		enemies.append({"pos": center(cell), "alive": true, "health": S.ENEMY_HEALTH, "angle": PI, "alert": false, "timer": S.ENEMY_REACTION_TIME, "stun": 0.0, "path": PackedVector2Array(), "repath": randf() * S.PATH_REFRESH_TIME, "target": center(cell), "gun": enemies.size() % 3 != 1})
+		enemies.append({"pos": center(cell), "alive": true, "health": S.ENEMY_HEALTH, "angle": deg_to_rad(S.ENEMY_START_ANGLE_DEGREES), "alert": false, "timer": S.ENEMY_REACTION_TIME, "stun": 0.0, "path": PackedVector2Array(), "repath": randf() * S.PATH_REFRESH_TIME, "target": center(cell), "gun": S.ENEMY_WEAPON_PATTERN[enemies.size() % S.ENEMY_WEAPON_PATTERN.size()] if not S.ENEMY_WEAPON_PATTERN.is_empty() else false})
 	dead = false
 	won = false
 	cooldown = 0
@@ -277,11 +280,32 @@ func reset_game() -> void:
 func mouse_cell() -> Vector2i:
 	return Vector2i((mouse_world() / SIZE).floor())
 
+func fit_map() -> void:
+	var low := Vector2i(Maps.WIDTH, Maps.HEIGHT)
+	var high := Vector2i.ZERO
+	for y in Maps.HEIGHT:
+		for x in Maps.WIDTH:
+			if map.cells[y * Maps.WIDTH + x] != 0:
+				low = low.min(Vector2i(x, y))
+				high = high.max(Vector2i(x + 1, y + 1))
+	if high.x <= low.x: return
+	editor_center = Vector2(low + high) * SIZE / 2.0
+	var extent := Vector2(high - low) * SIZE + Vector2.ONE * SIZE * 2
+	editor_zoom = clampf(minf(MAP_VIEW.size.x / extent.x, MAP_VIEW.size.y / extent.y), S.EDITOR_MIN_ZOOM, S.EDITOR_MAX_ZOOM)
+
 func camera_zoom() -> float:
-	return editor_zoom if editing else S.PLAY_CAMERA_ZOOM
+	return editor_zoom if editing else maxf(0.1, S.PLAY_CAMERA_ZOOM)
+
+func update_look_ahead(delta: float, looking: bool, cursor: Vector2) -> void:
+	var target := Vector2.ZERO
+	if looking and S.SHIFT_LOOK_ENABLED and MAP_VIEW.has_point(cursor):
+		# Screen-relative direction avoids feedback as the camera itself moves.
+		var direction := (cursor - MAP_VIEW.get_center()) / (MAP_VIEW.size / 2.0)
+		target = direction.limit_length(1.0) * maxf(0.0, S.SHIFT_LOOK_DISTANCE)
+	look_offset = look_offset.lerp(target, 1.0 - exp(-maxf(0.1, S.SHIFT_LOOK_TRANSITION_SPEED) * delta))
 
 func camera_center() -> Vector2:
-	return editor_center if editing else play_center
+	return editor_center if editing else play_center + look_offset
 
 func screen_to_world(point: Vector2) -> Vector2:
 	return (point - MAP_VIEW.get_center()) / camera_zoom() + camera_center()
@@ -331,6 +355,9 @@ func paint(cell: Vector2i, erase: bool) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if dialog.visible: return
+	if event is InputEventMouseButton and event.pressed and MAP_VIEW.has_point(event.position):
+		var focused := get_viewport().gui_get_focus_owner()
+		if focused != null: focused.release_focus()
 	if workshop != null and workshop.handle_event(event):
 		queue_redraw()
 		return
@@ -351,8 +378,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif editing:
 			if event.keycode == KEY_G: show_grid = not show_grid
 			elif event.keycode == KEY_HOME:
-				editor_center = Vector2(448, 308)
-				editor_zoom = 1.0
+				fit_map()
 			elif event.ctrl_pressed and event.keycode == KEY_Z: undo()
 			elif event.ctrl_pressed and event.keycode == KEY_Y: redo()
 			elif event.keycode >= KEY_1 and event.keycode <= KEY_9: select_brush(event.keycode - KEY_1)
@@ -421,29 +447,30 @@ func fill_area(start: Vector2i) -> void:
 	status.text = "Room floor replaced. Ctrl+Z undoes the fill."
 	queue_redraw()
 
-func can_stand(point: Vector2) -> bool:
+func can_stand(point: Vector2, radius: float = -1.0) -> bool:
+	if radius < 0: radius = S.PLAYER_COLLISION_RADIUS
 	# Include center and edge midpoints: corners alone miss thin walls/doors.
 	for offset in [Vector2.ZERO, Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN, Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-		if solid(point + offset * S.PLAYER_COLLISION_RADIUS): return false
+		if solid(point + offset * radius): return false
 	return true
 
-func move_actor(position: Vector2, velocity: Vector2) -> Vector2:
-	var steps := maxi(1, int(ceil(velocity.length() / 2.0)))
+func move_actor(position: Vector2, velocity: Vector2, radius: float = -1.0) -> Vector2:
+	var steps := maxi(1, int(ceil(velocity.length() / maxf(0.1, S.ACTOR_COLLISION_STEP))))
 	var step := velocity / steps
 	for i in steps:
-		if can_stand(position + Vector2(step.x, 0)): position.x += step.x
-		if can_stand(position + Vector2(0, step.y)): position.y += step.y
+		if can_stand(position + Vector2(step.x, 0), radius): position.x += step.x
+		if can_stand(position + Vector2(0, step.y), radius): position.y += step.y
 	return position
 
 func ray_end(start: Vector2, direction: Vector2, distance: float) -> Vector2:
 	var point := start
-	for i in int(ceil(distance / 3.0)):
-		point = start + direction * minf((i + 1) * 3.0, distance)
+	for i in int(ceil(distance / maxf(0.1, S.RAYCAST_STEP))):
+		point = start + direction * minf((i + 1) * maxf(0.1, S.RAYCAST_STEP), distance)
 		if solid(point): return point
 	return point
 
 func visible_between(a: Vector2, b: Vector2) -> bool:
-	return ray_end(a, a.direction_to(b), a.distance_to(b)).distance_to(b) < 4
+	return ray_end(a, a.direction_to(b), a.distance_to(b)).distance_to(b) < S.VISIBILITY_TOLERANCE
 
 func fire() -> void:
 	if reload_remaining > 0: return
@@ -489,7 +516,7 @@ func _process(delta: float) -> void:
 	swing = maxf(0, swing - delta)
 	for particle in particles:
 		particle.pos += particle.vel * delta
-		particle.vel *= 0.85
+		particle.vel *= exp(-S.PARTICLE_DRAG * delta)
 		particle.life -= delta
 	particles = particles.filter(func(p): return p.life > 0)
 	if editing:
@@ -519,6 +546,7 @@ func _process(delta: float) -> void:
 				last_cell = next
 		queue_redraw()
 		return
+	update_look_ahead(delta, Input.is_physical_key_pressed(KEY_SHIFT) and not get_viewport().gui_get_focus_owner() is LineEdit, get_global_mouse_position())
 	for trace in traces: trace.time -= delta
 	traces = traces.filter(func(trace): return trace.time > 0)
 	if dead or won:
@@ -531,9 +559,10 @@ func _process(delta: float) -> void:
 	if combo_time == 0: combo = 0
 	aim = player.angle_to_point(mouse_world())
 	var movement := Vector2(float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A)), float(Input.is_physical_key_pressed(KEY_S)) - float(Input.is_physical_key_pressed(KEY_W)))
+	if get_viewport().gui_get_focus_owner() is LineEdit: movement = Vector2.ZERO
 	var previous_position := player
 	if movement.length_squared() > 0:
-		var probe := player + movement.normalized() * (S.PLAYER_COLLISION_RADIUS + 12)
+		var probe := player + movement.normalized() * (S.PLAYER_COLLISION_RADIUS + S.DOOR_PUSH_LOOKAHEAD)
 		var door_cell := Vector2i((probe / SIZE).floor())
 		if inside(door_cell) and map.cells[door_cell.y * Maps.WIDTH + door_cell.x] == 5 and not open_doors.has(door_cell):
 			use_door(player, false)
@@ -569,7 +598,7 @@ func _process(delta: float) -> void:
 			elif sees and distance < S.ENEMY_MELEE_RANGE:
 				enemy.timer -= delta
 				if enemy.timer <= 0:
-					damage_player(S.ENEMY_DAMAGE)
+					damage_player(S.ENEMY_MELEE_DAMAGE)
 					enemy.timer = S.ENEMY_MELEE_INTERVAL
 			else: enemy.timer = S.ENEMY_REACTION_TIME
 	update_projectiles(delta)
@@ -613,9 +642,9 @@ func pursue(enemy: Dictionary, delta: float) -> void:
 		else:
 			use_door(enemy.pos, false)
 			enemy.angle = enemy.pos.angle_to_point(target)
-			enemy.pos = move_actor(enemy.pos, enemy.pos.direction_to(target) * (S.ENEMY_GUN_SPEED if enemy.gun else S.ENEMY_MELEE_SPEED) * delta)
+			enemy.pos = move_actor(enemy.pos, enemy.pos.direction_to(target) * (S.ENEMY_GUN_SPEED if enemy.gun else S.ENEMY_MELEE_SPEED) * delta, S.ENEMY_COLLISION_RADIUS)
 	elif enemy.pos.distance_to(enemy.target) > S.PATH_ARRIVAL_DISTANCE:
-		enemy.pos = move_actor(enemy.pos, enemy.pos.direction_to(enemy.target) * (S.ENEMY_GUN_SPEED if enemy.gun else S.ENEMY_MELEE_SPEED) * delta)
+		enemy.pos = move_actor(enemy.pos, enemy.pos.direction_to(enemy.target) * (S.ENEMY_GUN_SPEED if enemy.gun else S.ENEMY_MELEE_SPEED) * delta, S.ENEMY_COLLISION_RADIUS)
 	enemy["moving"] = enemy.pos.distance_to(previous_position) > 0.1
 
 func nearest_door(position: Vector2, closed_only: bool = false) -> Vector2i:
@@ -637,7 +666,7 @@ func use_door(position: Vector2, kick: bool) -> void:
 	if target.x < 0: return
 	if open_doors.has(target):
 		# Never close a door on an actor standing in its opening.
-		var opening := door_leaf_rect(target).grow(S.PLAYER_COLLISION_RADIUS + 0.5)
+		var opening := door_leaf_rect(target).grow(maxf(S.PLAYER_COLLISION_RADIUS, S.ENEMY_COLLISION_RADIUS) + S.DOOR_CLOSE_CLEARANCE)
 		if opening.has_point(player): return
 		for enemy in enemies:
 			if enemy.alive and opening.has_point(enemy.pos): return
@@ -647,7 +676,7 @@ func use_door(position: Vector2, kick: bool) -> void:
 		if kick:
 			shake = S.DOOR_SHAKE
 			for enemy in enemies:
-				if enemy.alive and enemy.pos.distance_to(Vector2(target) * SIZE + Vector2.ONE * 14) < S.DOOR_STUN_RANGE:
+				if enemy.alive and enemy.pos.distance_to(Vector2(target) * SIZE + Vector2.ONE * SIZE / 2.0) < S.DOOR_STUN_RANGE:
 					enemy.stun = S.STUN_DURATION
 	sound.play("door")
 
@@ -693,7 +722,7 @@ func melee() -> void:
 func kill_enemy(enemy: Dictionary) -> void:
 	if not enemy.alive: return
 	enemy.alive = false
-	drops.append({"pos": enemy.pos, "weapon": "PISTOL" if enemy.gun else "BAT", "ammo": mini(S.DROPPED_PISTOL_AMMO, S.MAGAZINE_SIZE)})
+	if S.ENEMIES_DROP_WEAPONS: drops.append({"pos": enemy.pos, "weapon": "PISTOL" if enemy.gun else "BAT", "ammo": mini(S.DROPPED_PISTOL_AMMO, S.MAGAZINE_SIZE)})
 	combo += 1
 	combo_time = S.COMBO_WINDOW
 	score += S.KILL_SCORE * combo
@@ -703,7 +732,7 @@ func kill_enemy(enemy: Dictionary) -> void:
 	for i in S.HIT_PARTICLE_COUNT:
 		var direction := Vector2.from_angle(randf() * TAU)
 		particles.append({"pos": enemy.pos, "vel": direction * randf_range(S.PARTICLE_MIN_SPEED, S.PARTICLE_MAX_SPEED), "life": randf_range(S.PARTICLE_MIN_LIFE, S.PARTICLE_MAX_LIFE)})
-		stains.append({"pos": enemy.pos + direction * randf_range(2, 22), "size": randf_range(2, 7)})
+		stains.append({"pos": enemy.pos + direction * randf_range(S.BLOOD_MIN_OFFSET, S.BLOOD_MAX_OFFSET), "size": randf_range(S.BLOOD_MIN_SIZE, S.BLOOD_MAX_SIZE)})
 
 func pickup() -> void:
 	var nearest := -1
@@ -732,7 +761,7 @@ func throw_weapon() -> void:
 func update_projectiles(delta: float) -> void:
 	for bullet in projectiles:
 		bullet.life -= delta
-		var steps := maxi(1, int(ceil(bullet.vel.length() * delta / 4)))
+		var steps := maxi(1, int(ceil(bullet.vel.length() * delta / maxf(0.1, S.PROJECTILE_COLLISION_STEP))))
 		for i in steps:
 			var next: Vector2 = bullet.pos + bullet.vel * delta / steps
 			if solid(next):
@@ -748,7 +777,7 @@ func update_projectiles(delta: float) -> void:
 						sound.play("hit")
 						break
 			elif player.distance_to(next) < S.PLAYER_HIT_RADIUS:
-				damage_player(S.ENEMY_DAMAGE)
+				damage_player(S.ENEMY_BULLET_DAMAGE)
 				bullet.life = 0
 			if bullet.life <= 0: break
 		if bullet.life <= 0 and bullet.thrown:
@@ -976,8 +1005,12 @@ func _draw() -> void:
 			draw_line(Vector2(0, offset.y + y * spacing), Vector2(1280, offset.y + y * spacing), S.EDITOR_GRID_COLOR, 1)
 	draw_rect(MAP_VIEW.grow(2), Color("e44a9c"), false, 2)
 	draw_set_transform(render_origin, 0, Vector2.ONE * view_zoom)
-	for y in Maps.HEIGHT:
-		for x in Maps.WIDTH:
+	if editing: draw_rect(Rect2(Vector2.ZERO, Vector2(Maps.WIDTH, Maps.HEIGHT) * SIZE), Color("60e4dc"), false, 1.0 / view_zoom)
+	# The expanded canvas should cost only what is currently on screen.
+	var visible_start := Vector2i(((MAP_VIEW.position - render_origin) / view_zoom / SIZE).floor()) - Vector2i.ONE
+	var visible_end := Vector2i(((MAP_VIEW.end - render_origin) / view_zoom / SIZE).ceil()) + Vector2i.ONE
+	for y in range(maxi(0, visible_start.y), mini(Maps.HEIGHT, visible_end.y)):
+		for x in range(maxi(0, visible_start.x), mini(Maps.WIDTH, visible_end.x)):
 			var tile: int = map.cells[y * Maps.WIDTH + x]
 			var rectangle := Rect2(Vector2(x, y) * SIZE, Vector2.ONE * SIZE)
 			if tile == 0:
@@ -989,8 +1022,8 @@ func _draw() -> void:
 			if editing and show_grid: draw_rect(rectangle, Color(0.6, 0.7, 0.9, 0.12), false)
 	if workshop != null: workshop.draw_layer(0)
 	# Floor artwork stays underneath structural walls and interactive doors.
-	for y in Maps.HEIGHT:
-		for x in Maps.WIDTH:
+	for y in range(maxi(0, visible_start.y), mini(Maps.HEIGHT, visible_end.y)):
+		for x in range(maxi(0, visible_start.x), mini(Maps.WIDTH, visible_end.x)):
 			var structural_tile: int = map.cells[y * Maps.WIDTH + x]
 			if structural_tile == 2:
 				draw_wall(Rect2(Vector2(x, y) * SIZE, Vector2.ONE * SIZE), Vector2i(x, y))
@@ -1002,11 +1035,11 @@ func _draw() -> void:
 		for stain in stains:
 			sprite("blood", stain.pos, 0, S.BLOOD_SPRITE_SCALE, int(stain.size) % 8)
 		for item in drops:
-			draw_circle(item.pos, 12, Color(1, 0.85, 0.4, 0.12 + sin(Time.get_ticks_msec() * 0.006) * 0.05))
+			draw_circle(item.pos, S.PICKUP_GLOW_RADIUS, Color(1, 0.85, 0.4, 0.12 + sin(Time.get_ticks_msec() * 0.006) * 0.05))
 			sprite("weapons", item.pos, 0, S.WEAPON_SPRITE_SCALE, 7 if item.weapon == "PISTOL" else 4)
 	var exit_position := center(map.exit)
 	draw_rect(Rect2(exit_position - Vector2(12, 12), Vector2(24, 24)), Color("50dca0"), false, 2)
-	sprite("exit", exit_position, 0, 0.65, int(elapsed * 6) % 4)
+	sprite("exit", exit_position, 0, S.EXIT_SPRITE_SCALE, int(elapsed * S.EXIT_ANIMATION_FPS) % 4)
 	if editing:
 		draw_actor(center(map.spawn), 0, true, S.START_WEAPON)
 		for i in map.enemies.size(): draw_actor(center(map.enemies[i]), PI, false, "PISTOL" if i % 3 != 1 else "BAT")
@@ -1026,7 +1059,7 @@ func _draw() -> void:
 		draw_actor(player, player.angle_to_point(mouse_world()), true, weapon, not dead, false, player_moving)
 		for bullet in projectiles:
 			if bullet.thrown:
-				sprite("weapons", bullet.pos, elapsed * 20, S.WEAPON_SPRITE_SCALE, 7 if bullet.weapon == "PISTOL" else 4)
+				sprite("weapons", bullet.pos, elapsed * S.THROW_SPIN_SPEED, S.WEAPON_SPRITE_SCALE, 7 if bullet.weapon == "PISTOL" else 4)
 			else: draw_line(bullet.pos, bullet.pos - bullet.vel.normalized() * 12, Color("ff718e"), 2)
 		for particle in particles: draw_circle(particle.pos, 2, Color("f34b78"))
 		if inside(mouse_cell()): sprite("cursor", mouse_world(), 0, 0.75)

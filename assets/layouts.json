@@ -10,15 +10,6 @@
 	},
 	{
 		"category": "Room layouts",
-		"frame": 1,
-		"frames": 16.0,
-		"height": 64.0,
-		"name": "Apartment1 / 2",
-		"path": "Floor Plans/sprApartment1_strip16.png",
-		"width": 1344.0
-	},
-	{
-		"category": "Room layouts",
 		"frame": 8,
 		"frames": 16.0,
 		"height": 64.0,
@@ -41,15 +32,6 @@
 		"frames": 16.0,
 		"height": 64.0,
 		"name": "Apartment2 / 2",
-		"path": "Floor Plans/sprApartment2_strip16.png",
-		"width": 1344.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 5,
-		"frames": 16.0,
-		"height": 64.0,
-		"name": "Apartment2 / 6",
 		"path": "Floor Plans/sprApartment2_strip16.png",
 		"width": 1344.0
 	},
@@ -88,24 +70,6 @@
 		"name": "Arcade / 9",
 		"path": "Floor Plans/sprArcade_strip16.png",
 		"width": 1440.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 0,
-		"frames": 2.0,
-		"height": 512.0,
-		"name": "ArcadeLight1 / 1",
-		"path": "Floor Plans/sprArcadeLight1_strip2.png",
-		"width": 1008.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 0,
-		"frames": 2.0,
-		"height": 576.0,
-		"name": "ArcadeLight2 / 1",
-		"path": "Floor Plans/sprArcadeLight2_strip2.png",
-		"width": 1152.0
 	},
 	{
 		"category": "Room layouts",
@@ -154,28 +118,10 @@
 	},
 	{
 		"category": "Room layouts",
-		"frame": 1,
-		"frames": 8.0,
-		"height": 140.0,
-		"name": "BossClub2 / 2",
-		"path": "Floor Plans/sprBossClub2_strip8.png",
-		"width": 1120.0
-	},
-	{
-		"category": "Room layouts",
 		"frame": 0,
 		"frames": 32.0,
 		"height": 84.0,
 		"name": "Building / 1",
-		"path": "Floor Plans/sprBuilding_strip32.png",
-		"width": 3712.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 1,
-		"frames": 32.0,
-		"height": 84.0,
-		"name": "Building / 2",
 		"path": "Floor Plans/sprBuilding_strip32.png",
 		"width": 3712.0
 	},
@@ -262,15 +208,6 @@
 	},
 	{
 		"category": "Room layouts",
-		"frame": 8,
-		"frames": 16.0,
-		"height": 64.0,
-		"name": "House1 / 9",
-		"path": "Floor Plans/sprHouse1_strip16.png",
-		"width": 1344.0
-	},
-	{
-		"category": "Room layouts",
 		"frame": 0,
 		"frames": 16.0,
 		"height": 72.0,
@@ -302,15 +239,6 @@
 		"frames": 24.0,
 		"height": 80.0,
 		"name": "House3 / 9",
-		"path": "Floor Plans/sprHouse3_strip24.png",
-		"width": 2016.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 16,
-		"frames": 24.0,
-		"height": 80.0,
-		"name": "House3 / 17",
 		"path": "Floor Plans/sprHouse3_strip24.png",
 		"width": 2016.0
 	},
@@ -361,24 +289,6 @@
 	},
 	{
 		"category": "Room layouts",
-		"frame": 3,
-		"frames": 16.0,
-		"height": 160.0,
-		"name": "Mansion / 4",
-		"path": "Floor Plans/sprMansion_strip16.png",
-		"width": 2048.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 6,
-		"frames": 16.0,
-		"height": 160.0,
-		"name": "Mansion / 7",
-		"path": "Floor Plans/sprMansion_strip16.png",
-		"width": 2048.0
-	},
-	{
-		"category": "Room layouts",
 		"frame": 8,
 		"frames": 16.0,
 		"height": 160.0,
@@ -424,15 +334,6 @@
 	},
 	{
 		"category": "Room layouts",
-		"frame": 8,
-		"frames": 24.0,
-		"height": 64.0,
-		"name": "Office / 9",
-		"path": "Floor Plans/sprOffice_strip24.png",
-		"width": 2016.0
-	},
-	{
-		"category": "Room layouts",
 		"frame": 9,
 		"frames": 24.0,
 		"height": 64.0,
@@ -446,15 +347,6 @@
 		"frames": 24.0,
 		"height": 64.0,
 		"name": "Office / 17",
-		"path": "Floor Plans/sprOffice_strip24.png",
-		"width": 2016.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 17,
-		"frames": 24.0,
-		"height": 64.0,
-		"name": "Office / 18",
 		"path": "Floor Plans/sprOffice_strip24.png",
 		"width": 2016.0
 	},
@@ -478,15 +370,6 @@
 	},
 	{
 		"category": "Room layouts",
-		"frame": 1,
-		"frames": 24.0,
-		"height": 112.0,
-		"name": "PoliceHQ / 2",
-		"path": "Floor Plans/sprPoliceHQ_strip24.png",
-		"width": 2880.0
-	},
-	{
-		"category": "Room layouts",
 		"frame": 8,
 		"frames": 24.0,
 		"height": 112.0,
@@ -502,15 +385,6 @@
 		"name": "PoliceHQ / 17",
 		"path": "Floor Plans/sprPoliceHQ_strip24.png",
 		"width": 2880.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 0,
-		"frames": 1.0,
-		"height": 463.0,
-		"name": "SewerShadow / 1",
-		"path": "Floor Plans/sprSewerShadow.png",
-		"width": 609.0
 	},
 	{
 		"category": "Room layouts",
@@ -538,24 +412,6 @@
 		"name": "SwatLevel / 9",
 		"path": "Floor Plans/sprSwatLevel_strip16.png",
 		"width": 1584.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 0,
-		"frames": 16.0,
-		"height": 68.0,
-		"name": "Trainstation / 1",
-		"path": "Floor Plans/sprTrainstation_strip16.png",
-		"width": 1344.0
-	},
-	{
-		"category": "Room layouts",
-		"frame": 1,
-		"frames": 16.0,
-		"height": 68.0,
-		"name": "Trainstation / 2",
-		"path": "Floor Plans/sprTrainstation_strip16.png",
-		"width": 1344.0
 	},
 	{
 		"category": "Room layouts",

@@ -1,7 +1,7 @@
 extends Node
 ## Full asset library and non-destructive object layer for the map workshop.
-const Icons = preload("res://scripts/editor_icons.gd")
-const S = preload("res://scripts/game_settings.gd")
+const Icons = preload("res://scripts/editor/editor_icons.gd")
+const S = preload("res://scripts/settings/game_settings.gd")
 const ROOT := "res://HLM1 Files/"
 var game: Node2D
 var catalog: Array = []
@@ -69,6 +69,10 @@ var insert_layout_button: Button
 var insertion_layout: Dictionary = {}
 var insertion_bounds := Rect2i()
 var generated_layout: Dictionary = {}
+var sidebar_visible := true
+var sidebar_button: Button
+var play_lab_panel: PanelContainer
+var play_lab: VBoxContainer
 var construction_section: VBoxContainer
 var library_page: VBoxContainer
 var detail_page: VBoxContainer
@@ -239,8 +243,7 @@ func build_browser() -> void:
 	button("Load", func(): game.choose_file("load"), toolbar)
 	undo_button = button("Undo", game.undo, toolbar)
 	redo_button = button("Redo", game.redo, toolbar)
-	button("Grid", func(): game.show_grid = not game.show_grid, toolbar)
-	button("Fit map", func(): game.editor_center = Vector2(448, 308); game.editor_zoom = 1.0, toolbar)
+	button("Fit map", func(): game.fit_map(), toolbar)
 	game.toggle_button = button("Playtest [Tab]", game.toggle_mode, toolbar)
 	game.toggle_button.modulate = Color("60e4dc")
 	mode_badge = Label.new()
@@ -351,6 +354,8 @@ func build_browser() -> void:
 	browse_filter.item_selected.connect(func(_index): filter_catalog())
 	button("Floor tiles", show_atlas_tiles, quick_filters)
 	button("Layouts", show_room_layouts, toolbar)
+	sidebar_button = button("Hide sidebar", func(): sidebar_visible = not sidebar_visible; update_mode(), toolbar)
+	sidebar_button.tooltip_text = "Show or hide the editor / Developer Lab sidebar"
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	library.add_child(scroll)
@@ -492,6 +497,18 @@ func build_browser() -> void:
 	create_layout_button.disabled = true
 	layouts_page.hide()
 	filter_catalog()
+	play_lab_panel = PanelContainer.new()
+	play_lab_panel.position = Vector2(1280, 108)
+	play_lab_panel.size = Vector2(640, 940)
+	play_lab_panel.theme = window.theme
+	add_child(play_lab_panel)
+	var lab_margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: lab_margin.add_theme_constant_override("margin_" + side, 12)
+	play_lab_panel.add_child(lab_margin)
+	play_lab = preload("res://scripts/ui/developer_lab.gd").new()
+	play_lab.compact = true
+	lab_margin.add_child(play_lab)
+	play_lab_panel.hide()
 
 func activate_select() -> void:
 	mode = "select"
@@ -502,7 +519,11 @@ func activate_select() -> void:
 	game.queue_redraw()
 
 func update_mode() -> void:
-	window.show()
+	window.visible = game.editing and sidebar_visible
+	if play_lab_panel != null:
+		if not game.editing and sidebar_visible and not play_lab_panel.visible: play_lab.rebuild()
+		play_lab_panel.visible = not game.editing and sidebar_visible
+	if sidebar_button != null: sidebar_button.text = "Hide sidebar" if sidebar_visible else "Show sidebar"
 	tabs.visible = game.editing
 	play_help.visible = not game.editing
 	mode_badge.text = "PLAYTEST" if not game.editing else ("PLACE ASSET · Click map to stamp" if mode == "stamp" else ("SELECT · Drag an object to move" if mode == "select" else "BUILD · Paint with the active tool"))
@@ -800,6 +821,7 @@ func use_stamp() -> void:
 	read_draft()
 	if draft.is_empty(): return
 	mode = "select" if is_map_layout() else "stamp"
+	sidebar_visible = true
 	window.show()
 	game.painting = false
 	var focused := get_viewport().gui_get_focus_owner()
@@ -811,10 +833,15 @@ func use_stamp() -> void:
 func apply_selected() -> void:
 	if selected < 0 or selected >= objects().size() or draft.is_empty(): return
 	read_draft()
+	var candidate := draft.duplicate(true)
+	candidate.pos = objects()[selected].pos
+	if candidate.asset == FLOOR_ATLAS: align_floor(candidate, floor_bounds(objects()[selected]).position + Vector2.ONE)
+	if floor_overlap(candidate, selected):
+		game.status.text = "That size overlaps another floor tile."
+		return
 	game.snapshot()
-	var position: Array = objects()[selected].pos
-	objects()[selected] = draft.duplicate(true)
-	objects()[selected].pos = position
+	objects()[selected] = candidate
+	sync_inspector(candidate)
 	window.release_focus()
 	mode = "select"
 	game.queue_redraw()
@@ -850,6 +877,7 @@ func open_browser() -> void:
 	if not game.editing: return
 	game.painting = false
 	dragging = false
+	sidebar_visible = true
 	window.show()
 	tabs.current_tab = 0
 	show_library_page()
@@ -863,16 +891,41 @@ func inspect_selected() -> void:
 	show_detail_page()
 	search.release_focus()
 
+# Floor stamps occupy whole grid cells; their edges share the same grid origin.
+func align_floor(item: Dictionary, point: Vector2) -> void:
+	if item.asset != FLOOR_ATLAS: return
+	item.rotation = roundf(float(item.rotation) / 90.0) * 90.0
+	item.scale = maxf(1.0, roundf(float(item.scale) * ATLAS_CELL / game.SIZE)) * game.SIZE / ATLAS_CELL
+	var extent := object_size(item, texture_for(item.asset, item.frame, item.crop)) * float(item.scale)
+	if int(absf(item.rotation)) % 180 == 90: extent = Vector2(extent.y, extent.x)
+	var origin: Vector2 = (point / game.SIZE).floor() * game.SIZE
+	item.pos = [origin.x + extent.x / 2, origin.y + extent.y / 2]
+
+func floor_bounds(item: Dictionary) -> Rect2:
+	var extent := object_size(item, texture_for(item.asset, item.frame, item.crop)) * float(item.scale)
+	if int(absf(item.rotation)) % 180 == 90: extent = Vector2(extent.y, extent.x)
+	return Rect2(Vector2(item.pos[0], item.pos[1]) - extent / 2, extent)
+
+func floor_overlap(item: Dictionary, ignored: int = -1) -> bool:
+	if item.asset != FLOOR_ATLAS: return false
+	var bounds := floor_bounds(item).grow(-0.01)
+	for i in objects().size():
+		if i != ignored and objects()[i].asset == FLOOR_ATLAS and bounds.intersects(floor_bounds(objects()[i])): return true
+	return false
+
 func position_for(point: Vector2) -> Vector2:
 	if not draft.is_empty() and draft.asset == FLOOR_ATLAS:
 		# Atlas cells are centered on terrain cells, never on their corners.
-		point = (point / game.SIZE).floor() * game.SIZE + Vector2.ONE * game.SIZE / 2.0
+		var aligned := draft.duplicate(true)
+		align_floor(aligned, point)
+		point = Vector2(aligned.pos[0], aligned.pos[1])
 	elif snap_input.button_pressed:
 		point = (point / S.OBJECT_SNAP_SIZE).round() * S.OBJECT_SNAP_SIZE
 	return point.clamp(Vector2.ZERO, Vector2(game.Maps.WIDTH, game.Maps.HEIGHT) * game.SIZE - Vector2.ONE)
 
 func place(point: Vector2) -> void:
 	if draft.is_empty() or is_map_layout() or objects().size() >= S.MAX_MAP_OBJECTS: return
+	align_floor(draft, point)
 	var item := draft.duplicate(true)
 	var position := position_for(point)
 	item.pos = [position.x, position.y]
@@ -880,13 +933,17 @@ func place(point: Vector2) -> void:
 	if item.asset == FLOOR_ATLAS:
 		for i in objects().size():
 			var existing: Dictionary = objects()[i]
-			if existing.asset == FLOOR_ATLAS and Vector2i(Vector2(existing.pos[0], existing.pos[1]) / game.SIZE) == Vector2i(position / game.SIZE):
+			if existing.asset == FLOOR_ATLAS and floor_bounds(existing).is_equal_approx(floor_bounds(item)):
+				if floor_overlap(item, i): return
 				if existing == item: return
 				game.snapshot()
 				objects()[i] = item
 				selected = i
 				game.queue_redraw()
 				return
+	if floor_overlap(item):
+		game.status.text = "Floor already occupied. Place beside it or delete the existing tile first."
+		return
 	game.snapshot()
 	objects().append(item)
 	selected = objects().size() - 1
@@ -919,8 +976,11 @@ func is_solid(point: Vector2) -> bool:
 func rotate_active(degrees: float) -> void:
 	var item: Dictionary = draft if mode == "stamp" else (objects()[selected] if mode == "select" and selected >= 0 and selected < objects().size() else {})
 	if item.is_empty(): return
+	var previous := item.duplicate(true)
 	if mode == "select": game.snapshot()
 	item.rotation = wrapf(item.rotation + degrees, -180, 180)
+	if mode == "select" and floor_overlap(item, selected):
+		item.merge(previous, true)
 	sync_inspector(item)
 	game.queue_redraw()
 
@@ -935,7 +995,7 @@ func handle_event(event: InputEvent) -> bool:
 	if event is InputEventMouseButton and event.pressed and game.MAP_VIEW.has_point(event.position) and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 		if mode == "stamp" and is_floor_stamp() and not event.ctrl_pressed:
 			var direction := 1.0 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0
-			draft.scale = clampf(draft.scale + direction * S.FLOOR_STAMP_SCALE_STEP, 0.1, 8.0)
+			draft.scale = clampf(draft.scale + direction * (float(game.SIZE) / ATLAS_CELL if draft.asset == FLOOR_ATLAS else S.FLOOR_STAMP_SCALE_STEP), 0.1, 8.0)
 			sync_inspector(draft)
 			game.status.text = "Size: %.2fx / Wheel: resize / Ctrl+wheel: zoom / Click: place / Esc: menu" % draft.scale
 			return true
@@ -961,12 +1021,17 @@ func handle_event(event: InputEvent) -> bool:
 		if event.keycode in [KEY_Q, KEY_E, KEY_BRACKETLEFT, KEY_BRACKETRIGHT]:
 			var item: Dictionary = draft if mode == "stamp" else (objects()[selected] if selected >= 0 and selected < objects().size() else {})
 			if item.is_empty(): return true
+			var previous := item.duplicate(true)
 			if mode == "select": game.snapshot()
 			if event.keycode == KEY_Q: item.rotation -= 90 if is_floor_stamp() else S.OBJECT_ROTATION_STEP
 			if event.keycode == KEY_E: item.rotation += 90 if is_floor_stamp() else S.OBJECT_ROTATION_STEP
 			if event.keycode == KEY_BRACKETLEFT: item.scale = maxf(0.1, item.scale - 0.1)
 			if event.keycode == KEY_BRACKETRIGHT: item.scale = minf(8, item.scale + 0.1)
 			item.rotation = wrapf(item.rotation, -180, 180)
+			if item.asset == FLOOR_ATLAS:
+				var bounds := floor_bounds(previous)
+				align_floor(item, bounds.position + Vector2.ONE)
+				if mode == "select" and floor_overlap(item, selected): item.merge(previous, true)
 			sync_inspector(item)
 			return true
 	# Manual-style gestures also allow grabbing a prop while a terrain tool is active.
@@ -1039,14 +1104,41 @@ func tick(delta: float) -> void:
 		if not game.MAP_VIEW.has_point(game.get_global_mouse_position()): return
 		var position := position_for(game.mouse_world() + drag_offset)
 		if objects()[selected].asset == FLOOR_ATLAS:
-			for i in objects().size():
-				if i == selected: continue
-				var other: Dictionary = objects()[i]
-				if other.asset == FLOOR_ATLAS and Vector2i(Vector2(other.pos[0], other.pos[1]) / game.SIZE) == Vector2i(position / game.SIZE):
-					return
+			var moved: Dictionary = objects()[selected].duplicate(true)
+			align_floor(moved, game.mouse_world() + drag_offset - floor_bounds(moved).size / 2 + Vector2.ONE * game.SIZE / 2)
+			position = Vector2(moved.pos[0], moved.pos[1])
+		var candidate: Dictionary = objects()[selected].duplicate(true)
+		candidate.pos = [position.x, position.y]
+		if floor_overlap(candidate, selected): return
 		if objects()[selected].pos != [position.x, position.y]:
 			if not drag_started: game.snapshot(); drag_started = true
 			objects()[selected].pos = [position.x, position.y]
+
+func floor_patch_polygons(polygon: PackedVector2Array) -> Array[PackedVector2Array]:
+	var bounds := Rect2(polygon[0], Vector2.ZERO)
+	for point in polygon: bounds = bounds.expand(point)
+	var first := Vector2i((bounds.position / game.SIZE).floor())
+	var last := Vector2i((bounds.end / game.SIZE).floor())
+	var result: Array[PackedVector2Array] = []
+	for y in range(maxi(0, first.y), mini(game.Maps.HEIGHT - 1, last.y) + 1):
+		for x in range(maxi(0, first.x), mini(game.Maps.WIDTH - 1, last.x) + 1):
+			var cell := Vector2i(x, y)
+			var tile: int = game.map.cells[y * game.Maps.WIDTH + x]
+			if tile == 0: continue
+			var rect := Rect2(Vector2(cell) * game.SIZE, Vector2.ONE * game.SIZE)
+			if tile in [2, 5]: rect = game.structural_floor_rect(cell)
+			if not rect.has_area(): continue
+			var clip := PackedVector2Array([rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)])
+			result.append_array(Geometry2D.intersect_polygons(polygon, clip))
+	return result
+
+func draw_floor_patch(texture: Texture2D, rect: Rect2, transform: Transform2D, tint: Color) -> void:
+	var polygon := transform * PackedVector2Array([rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)])
+	var inverse := transform.affine_inverse()
+	for clipped in floor_patch_polygons(polygon):
+		var uv := PackedVector2Array()
+		for point in clipped: uv.append((inverse * point - rect.position) / texture.get_size())
+		game.draw_polygon(clipped, PackedColorArray([tint]), uv, texture)
 
 func draw_item(item: Dictionary, ghost: bool = false) -> void:
 	var frame: int = int(clock * S.OBJECT_ANIMATION_FPS) + int(item.frame) if item.animated else int(item.frame)
@@ -1055,6 +1147,9 @@ func draw_item(item: Dictionary, ghost: bool = false) -> void:
 	var position := Vector2(item.pos[0], item.pos[1])
 	game.draw_set_transform(game.render_origin + position * game.view_zoom, deg_to_rad(item.rotation), Vector2.ONE * item.scale * game.view_zoom)
 	var tint := S.PLACEMENT_PREVIEW_COLOR if ghost else Color.WHITE
+	var floor_stamp: bool = item.asset == FLOOR_ATLAS
+	var transform := Transform2D(deg_to_rad(item.rotation), Vector2.ONE * item.scale, 0.0, position)
+	if floor_stamp: game.draw_set_transform(game.render_origin, 0, Vector2.ONE * game.view_zoom)
 	if item.get("tiled", false):
 		var extent := object_size(item, texture)
 		var step := texture.get_size()
@@ -1062,10 +1157,13 @@ func draw_item(item: Dictionary, ghost: bool = false) -> void:
 			for x in int(ceil(extent.x / step.x)):
 				var offset := Vector2(x, y) * step
 				var clipped := (extent - offset).min(step)
-				game.draw_texture_rect_region(texture, Rect2(-extent / 2 + offset, clipped), Rect2(Vector2.ZERO, clipped), tint)
+				if floor_stamp: draw_floor_patch(texture, Rect2(-extent / 2 + offset, clipped), transform, tint)
+				else: game.draw_texture_rect_region(texture, Rect2(-extent / 2 + offset, clipped), Rect2(Vector2.ZERO, clipped), tint)
 	else:
-		game.draw_texture(texture, -texture.get_size() / 2, tint)
+		if floor_stamp: draw_floor_patch(texture, Rect2(-texture.get_size() / 2, texture.get_size()), transform, tint)
+		else: game.draw_texture(texture, -texture.get_size() / 2, tint)
 	if ghost:
+		game.draw_set_transform(game.render_origin + position * game.view_zoom, deg_to_rad(item.rotation), Vector2.ONE * item.scale * game.view_zoom)
 		var extent := object_size(item, texture)
 		game.draw_rect(Rect2(-extent / 2, extent), S.PLACEMENT_OUTLINE_COLOR, false, 2.0 / (item.scale * game.view_zoom))
 	game.draw_set_transform(game.render_origin, 0, Vector2.ONE * game.view_zoom)
@@ -1093,6 +1191,7 @@ func draw_tools() -> void:
 		else: game.draw_rect(Rect2(Vector2(selected_terrain) * game.SIZE, Vector2.ONE * game.SIZE), Color("60e4dc"), false, 1)
 	if mode == "stamp" and not draft.is_empty() and game.MAP_VIEW.has_point(game.get_global_mouse_position()):
 		var item := draft.duplicate(true)
+		align_floor(item, game.mouse_world())
 		var position := position_for(game.mouse_world())
 		item.pos = [position.x, position.y]
 		draw_item(item, true)
@@ -1104,3 +1203,4 @@ func draw_tools() -> void:
 		var size := object_size(item, texture)
 		game.draw_rect(Rect2(-size / 2, size), Color("60e4dc"), false, 1.0 / item.scale)
 		game.draw_set_transform(game.render_origin, 0, Vector2.ONE * game.view_zoom)
+

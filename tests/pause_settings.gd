@@ -1,7 +1,7 @@
 extends SceneTree
-const Game = preload("res://scripts/main.gd")
-const Preferences = preload("res://scripts/runtime_settings.gd")
-const Maps = preload("res://scripts/map_data.gd")
+const Game = preload("res://scripts/game/main.gd")
+const Preferences = preload("res://scripts/settings/runtime_settings.gd")
+const Maps = preload("res://scripts/maps/map_data.gd")
 var failures := 0
 
 func check(value: bool, message: String) -> void:
@@ -67,8 +67,29 @@ func run() -> void:
 	game.sound.muted = false
 	for i in 24: game.sound.play("shot")
 	check(game.sound.get_child_count() == game.S.MAX_AUDIO_VOICES, "Rapid sounds reuse bounded voices")
+	game.toggle_mode()
+	check(game.workshop.play_lab_panel.visible and not game.workshop.window.visible, "Playtest replaces editor sidebar with Developer Lab")
+	check(not paused, "Sidebar tuning does not pause the game")
+	game.toggle_mode()
+	check(not game.workshop.play_lab_panel.visible and game.workshop.window.visible, "Returning to editor restores its sidebar")
+	game.toggle_mode()
+	var normal_zoom := game.camera_zoom()
+	var cursor := game.MAP_VIEW.get_center() + Vector2(game.MAP_VIEW.size.x * 0.4, 0)
+	game.update_look_ahead(0.1, true, cursor)
+	check(game.look_offset.x > 0 and is_zero_approx(game.look_offset.y), "Shift pans toward the cursor")
+	check(is_equal_approx(game.camera_zoom(), normal_zoom), "Shift keeps zoom unchanged")
+	var previous_offset := game.look_offset.length()
+	game.update_look_ahead(0.1, false, cursor)
+	check(game.look_offset.length() < previous_offset, "Release returns camera toward player")
+	game.update_look_ahead(10.0, true, cursor)
+	check(game.look_offset.length() <= game.S.SHIFT_LOOK_DISTANCE, "Look-ahead stays bounded")
+	game.update_look_ahead(10.0, true, Vector2(1500, 500))
+	check(game.look_offset.length() < 0.01, "Sidebar interaction recenters look-ahead")
+	game.reset_game()
+	check(game.look_offset == Vector2.ZERO, "Restart clears look-ahead")
 	game.queue_free()
 	await process_frame
-	await process_frame
+	# Let the audio thread release the eight just-started playback voices.
+	await create_timer(0.1).timeout
 	print("Pause/settings checks: %d failures" % failures)
 	quit(1 if failures else 0)

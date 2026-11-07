@@ -1,5 +1,5 @@
 extends SceneTree
-const Maps = preload("res://scripts/map_data.gd")
+const Maps = preload("res://scripts/maps/map_data.gd")
 func _initialize() -> void:
  var catalog: Array = JSON.parse_string(FileAccess.get_file_as_string("res://assets/catalog.json").trim_prefix("\ufeff"))
  var kept: Array = []
@@ -14,13 +14,15 @@ func _initialize() -> void:
    var signature: Array = map.cells.duplicate()
    for i in signature.size():
     if Maps.floor_tile(signature[i]): signature[i] = 1
+    elif signature[i] == 5: signature[i] = 2
    var duplicate := false
    for existing in signatures:
     var differences := 0
+    var occupied := 0
     for i in signature.size():
+     if signature[i] != 0 or existing[i] != 0: occupied += 1
      if signature[i] != existing[i]: differences += 1
-     if differences > 10: break
-    if differences <= 10: duplicate = true; break
+    if differences <= maxi(10, int(occupied * 0.30)): duplicate = true; break
    if duplicate: continue
    signatures.append(signature)
    var item: Dictionary = entry.duplicate(true)

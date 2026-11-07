@@ -1,9 +1,9 @@
 extends RefCounted
 ## Shared map dimensions, tile types and constructors. No editor dependencies.
-const S = preload("res://scripts/game_settings.gd")
-const WIDTH := 32
-const HEIGHT := 22
-const TILE := 28
+const S = preload("res://scripts/settings/game_settings.gd")
+const WIDTH := S.MAP_WIDTH_CELLS
+const HEIGHT := S.MAP_HEIGHT_CELLS
+const TILE := S.CELL_SIZE
 
 static func floor_tile(tile: int) -> bool:
 	return tile in [1, 3, 4]

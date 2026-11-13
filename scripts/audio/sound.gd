@@ -1,8 +1,8 @@
 extends Node
-const S = preload("res://scripts/settings/game_settings.gd")
+const EditorVisualsSettings = preload("res://scripts/settings/editor_visuals_settings.gd")
 
 var sounds: Dictionary = {}
-var muted := not S.SOUND_ENABLED
+var muted := not EditorVisualsSettings.SOUND_ENABLED
 var voices: Array[AudioStreamPlayer] = []
 var next_voice := 0
 
@@ -32,7 +32,7 @@ func play(kind: String) -> void:
 	if muted or not sounds.has(kind): return
 	# Reuse a bounded voice pool instead of allocating/freeing nodes per shot.
 	if voices.is_empty():
-		for i in S.MAX_AUDIO_VOICES:
+		for i in EditorVisualsSettings.MAX_AUDIO_VOICES:
 			var voice := AudioStreamPlayer.new()
 			add_child(voice)
 			voices.append(voice)
@@ -40,5 +40,5 @@ func play(kind: String) -> void:
 	next_voice = (next_voice + 1) % voices.size()
 	voice.stop()
 	voice.stream = sounds[kind]
-	voice.volume_db = S.SOUND_VOLUME_DB
+	voice.volume_db = EditorVisualsSettings.SOUND_VOLUME_DB
 	voice.play()

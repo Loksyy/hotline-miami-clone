@@ -16,17 +16,19 @@ Open [project.godot](project.godot) in Godot 4.4 or newer and press **F5**.
 
 ## Editor
 
-Select assets from the right panel and click to place. **Select** moves existing objects; **Delete** erases them. **Ctrl+Z / Ctrl+Y** undo/redo.
+Select assets from the right panel and click to place. **Select** moves existing objects; **Delete** erases them. **Ctrl+Z** undo; **Ctrl+Y / Ctrl+Shift+Z** redo. **Ctrl+S / Ctrl+O** save/open. **G** toggles the background grid.
 
-Use **Layouts** to create a new map or insert a movable layout into the current one. Expand **Floors, walls & gameplay** for construction tools. **Q/E** rotate; the wheel resizes floor tiles, **Ctrl+wheel** zooms, and middle-drag pans. Save maps with **Save**; there is no autosave.
+Use **Layouts** to create a new map or insert a movable layout into the current one. Choose **Build** for floors, walls and markers; **Assets** returns to the library. Object properties show the essentials, with sprite details under **Advanced**. **Q/E** rotate; the wheel resizes floor tiles, **Ctrl+wheel** zooms, and middle-drag pans. Save maps with **Save**; there is no autosave.
+
+Pick usable weapons from **Weapons**. **E** collects them; a Molotov is thrown with left/right click and leaves damaging fire. Search **Molotov** in Developer Lab to tune it.
 
 ## Customize
 
-- [game_settings.gd](scripts/settings/game_settings.gd): gameplay, sizes, enemies and editor settings. [Tuning reference](docs/tuning.md).
-- Pause **Settings**: volume, fullscreen, VSync, FPS limit/counter and screen shake.
+- Tune [player](scripts/settings/player_settings.gd), [weapons](scripts/settings/weapons_settings.gd), [enemies](scripts/settings/enemies_settings.gd), [world/layouts](scripts/settings/world_settings.gd), or [editor/visuals](scripts/settings/editor_visuals_settings.gd). [Tuning reference](docs/tuning.md).
+- Top-right **gear** or pause **Settings**: grid visibility/opacity, hover highlight, object snapping, zoom speed, audio and display options. Preferences are saved when closing the menu.
 - [Developer guide](docs/development.md): code organization and verification.
 
-**Developer Lab** appears in the right sidebar during playtests (also available through **Esc**). It lets you search and tweak settings live. **Save tuning** keeps overrides between sessions; **Reset to source defaults** restores source values. Starting stats need a new playtest; map dimensions are read-only.
+**Developer Lab** appears in the right sidebar during playtests (also available through **Esc**). Browse categories or search all settings; **Modified only** shows your edits. Guns have labeled numeric fields, and each setting has its own **Reset** button. **Save tuning** keeps overrides between sessions; **Reset to source defaults** restores source values. Starting stats need a new playtest; map dimensions are read-only.
 
 ## Find or fix something
 

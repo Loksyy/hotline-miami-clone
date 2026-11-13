@@ -16,7 +16,7 @@
 
 | File | Responsibility |
 | --- | --- |
-| [game_settings.gd](../scripts/settings/game_settings.gd) | Developer tuning: movement, damage, reload times, camera and editor defaults. |
+| [settings/](../scripts/settings/) | Tune `player_settings`, `weapons_settings`, `enemies_settings`, `world_settings`, and `editor_visuals_settings`. `game_settings` registers settings for Developer Lab; gameplay imports the groups directly; `live_tuning` validates and saves Developer Lab overrides. |
 | [runtime_settings.gd](../scripts/settings/runtime_settings.gd) | Player preferences in `user://preferences.cfg`; independent of map saves. |
 | [main.gd](../scripts/game/main.gd) | Scene coordinator, gameplay simulation, editor terrain input and drawing. |
 | [pause_menu.gd](../scripts/ui/pause_menu.gd) | Escape handling, pause navigation and settings controls. |
@@ -50,3 +50,9 @@ godot --headless --path . --script tests/pause_settings.gd
 The suite covers map validation, layout generation, collision, doors, combat, save/load, undo, editor controls and viewport bounds. Headless tests do not establish GPU frame rates or visual quality: also check the editor and playtest in a real window.
 
 Rebuild asset metadata with [rebuild_asset_catalog.gd](../tools/rebuild_asset_catalog.gd). Rebuild unique layout representatives with [curate_layouts.gd](../tools/curate_layouts.gd). Source PNGs remain untouched; windows are currently non-breakable.
+
+## Repeatable rendering check
+
+Run `godot --path . --script tests/performance.gd` in a real window. It temporarily disables the FPS cap and VSync without saving preferences, warms up, then samples 360 frames in the starter editor and a stationary playtest with enemies removed. It reports average FPS and drawing-script CPU time; this isolates rendering, not combat performance. Compare runs with the same Godot version and desktop workload. Floors use cached repeatable textures; sofa geometry rebuilds only when map geometry changes.
+
+Settings split check: `godot --headless --path . --script tests/settings_split.gd` verifies the registry and shared values.

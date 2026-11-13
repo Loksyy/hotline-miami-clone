@@ -1,4 +1,9 @@
 extends SceneTree
+const EditorVisualsSettings = preload("res://scripts/settings/editor_visuals_settings.gd")
+const EnemiesSettings = preload("res://scripts/settings/enemies_settings.gd")
+const PlayerSettings = preload("res://scripts/settings/player_settings.gd")
+const WeaponsSettings = preload("res://scripts/settings/weapons_settings.gd")
+const WorldSettings = preload("res://scripts/settings/world_settings.gd")
 
 const Maps = preload("res://scripts/maps/map_data.gd")
 const Game = preload("res://scripts/game/main.gd")
@@ -45,8 +50,8 @@ func run() -> void:
 	game.editor_center += Vector2(50, -20)
 	check(game.screen_to_world(game.MAP_VIEW.get_center()).distance_to(game.editor_center) < 0.001, "Panning and pointer coordinates share camera transform")
 	game.zoom_at(screen_point, 1000)
-	check(game.editor_zoom == game.S.EDITOR_MAX_ZOOM, "Zoom respects maximum")
-	game.editor_zoom = game.S.EDITOR_DEFAULT_ZOOM
+	check(game.editor_zoom == EditorVisualsSettings.EDITOR_MAX_ZOOM, "Zoom respects maximum")
+	game.editor_zoom = EditorVisualsSettings.EDITOR_DEFAULT_ZOOM
 	game.editor_center = Vector2(448, 308)
 	game.set_process(false)
 	game.snapshot()
@@ -63,7 +68,7 @@ func run() -> void:
 	game.toggle_mode()
 	check(game.map == original, "Playtesting must preserve layout")
 	check(game.enemies[0].alive, "Restart must reset enemies")
-	check(game.move_actor(Vector2(42, 42), Vector2(-100, 0)).x >= 14 + game.S.WALL_THICKNESS / 2 + game.S.PLAYER_COLLISION_RADIUS, "Collision prevents thin-wall tunneling")
+	check(game.move_actor(Vector2(42, 42), Vector2(-100, 0)).x >= 14 + WorldSettings.WALL_THICKNESS / 2 + PlayerSettings.PLAYER_COLLISION_RADIUS, "Collision prevents thin-wall tunneling")
 	check(not game.visible_between(Vector2(290, 100), Vector2(350, 100)), "Walls block sight")
 	game.file_action = "save"
 	game.on_file_selected("user://smoke_map.json")
@@ -115,10 +120,10 @@ func run() -> void:
 	game.ammo = 2
 	game.reserve_ammo = 3
 	game.start_reload()
-	check(game.reload_remaining == game.S.RELOAD_TIME, "Reload uses configured duration")
+	check(game.reload_remaining == WeaponsSettings.RELOAD_TIME, "Reload uses configured duration")
 	game.fire()
 	check(game.ammo == 2, "Cannot fire while reloading")
-	game.update_reload(game.S.RELOAD_TIME + 0.01)
+	game.update_reload(WeaponsSettings.RELOAD_TIME + 0.01)
 	check(game.ammo == 5 and game.reserve_ammo == 0, "Reload only transfers available reserve")
 	game.reserve_ammo = 10
 	game.start_reload()
@@ -143,7 +148,7 @@ func run() -> void:
 	check(game.art.frame("player_gun").get_size() == Vector2(44, 32), "Atlas frame crops a single pose")
 	check(game.art.frame("weapons", 7).get_image().get_pixel(0, 0).a == 0, "Sprite transparency is preserved")
 	# The entire supplied library is catalogued; strip frames remain separately selectable.
-	check(game.workshop.catalog.size() == 1431, "All supplied PNGs are catalogued")
+	check(game.workshop.metadata.size() == 1431, "All supplied PNGs are catalogued")
 	check(game.workshop.window is PanelContainer, "Asset library is an embedded dock")
 	check(game.workshop.window.position == Vector2(1280, 108), "Asset dock leaves room for top toolbar")
 	check(ProjectSettings.get_setting("display/window/size/viewport_width") == 1920 and ProjectSettings.get_setting("display/window/size/viewport_height") == 1080, "Game uses a 1920 by 1080 viewport")
@@ -202,7 +207,7 @@ func run() -> void:
 	game.workshop.mode = "terrain"
 	game.workshop.choose("Floor Plans/sprApartment1_strip16.png")
 	check(game.workshop.mode == "select", "Layout selection does not activate picture stamping")
-	check(game.workshop.draft.scale == game.S.FLOOR_PLAN_DEFAULT_SCALE and game.workshop.draft.layer == 0, "Floor plan defaults to enlarged floor layer")
+	check(game.workshop.draft.scale == EditorVisualsSettings.FLOOR_PLAN_DEFAULT_SCALE and game.workshop.draft.layer == 0, "Floor plan defaults to enlarged floor layer")
 	game.workshop.scale_input.value = 3
 	check(is_equal_approx(game.workshop.draft.scale, 3.0), "Inspector updates active stamp immediately")
 	game.workshop.frame_input.value = 9
@@ -250,7 +255,7 @@ func run() -> void:
 	game.replace_map(Maps.demo())
 	check(game.solid(Vector2(11 * 28 + 14, 3 * 28 + 14)), "Thin wall center blocks")
 	check(not game.solid(Vector2(11 * 28 + 2, 3 * 28 + 14)), "Visible floor beside thin wall is walkable")
-	check(game.wall_segments(Vector2i(11, 3))[0].size.x == game.S.WALL_THICKNESS, "Vertical wall uses configured native thickness")
+	check(game.wall_segments(Vector2i(11, 3))[0].size.x == WorldSettings.WALL_THICKNESS, "Vertical wall uses configured native thickness")
 	print("Room layouts available: %d" % game.workshop.room_layouts.size())
 	game.replace_map(Maps.demo())
 	game.select_brush(8)
@@ -438,6 +443,15 @@ func run() -> void:
 	var outside := PackedVector2Array([Vector2.ZERO, Vector2(28, 0), Vector2(28, 28), Vector2(0, 28)])
 	game.map.cells[0] = 0
 	check(game.workshop.floor_patch_polygons(outside).is_empty(), "Floor stamps do not draw over empty space")
+	var before_wall_delete: Rect2 = game.floor_rect(Vector2i(8, 8))
+	game.snapshot()
+	game.paint(Vector2i(8, 8), true)
+	check(game.floor_rect(Vector2i(8, 8)) == before_wall_delete, "Deleting exterior wall preserves exact floor footprint")
+	var saved_outline: Dictionary = JSON.parse_string(JSON.stringify(game.map))
+	game.map = Maps.normalize(saved_outline)
+	check(game.floor_rect(Vector2i(8, 8)) == before_wall_delete, "Floor outline survives JSON save/load")
+	game.undo()
+	check(game.map.cells[8 * Maps.WIDTH + 8] == 2, "Undo restores clipped wall")
 	game.workshop.show_room_layouts()
 	game.workshop.layouts_list.item_selected.emit(8)
 	var expected_layout: Dictionary = game.workshop.generated_layout.duplicate(true)
@@ -458,13 +472,12 @@ func run() -> void:
 	check(rejected_layouts <= 5, "Outline-aware converter supports at least 340 layouts")
 	check(game.workshop.room_layouts.size() > 0 and game.workshop.room_layouts.size() < 63, "Curated browser contains unique layout representatives")
 	check(game.workshop.find_children("*", "PopupPanel", true, false).is_empty(), "Build tools no longer use a trapping popup")
-	var section_toggle: CheckButton = game.workshop.construction_section.get_parent().get_child(game.workshop.construction_section.get_index() - 1)
-	section_toggle.button_pressed = true
+	game.workshop.show_build_page()
 	await process_frame
 	await process_frame
 	check(game.workshop.window.get_global_rect().end.y <= 1080, "Expanded construction tools stay within screen")
-	section_toggle.button_pressed = false
-	check(not game.workshop.construction_section.visible, "Construction section can close directly")
+	game.workshop.show_library_page()
+	check(not game.workshop.construction_section.visible, "Assets navigation closes construction page")
 	game.replace_map(Maps.blank())
 	var before_insert: Dictionary = game.map.duplicate(true)
 	var fragment := Maps.blank()
@@ -496,6 +509,140 @@ func run() -> void:
 	check(Maps.validate(legacy) == "", "Original 32x22 save remains loadable")
 	var migrated := Maps.normalize(legacy)
 	check(migrated.cells.size() == Maps.WIDTH * Maps.HEIGHT and migrated.spawn == [35, 33], "Legacy terrain and markers move together into expanded canvas")
+	var categories = preload("res://scripts/editor/asset_categories.gd")
+	check(categories.category_for("Combat/Enemy/sprEAttackBat_strip9.png") == "Enemies that are alive", "Attack sprites are in living-enemy category")
+	check(categories.category_for("Combat/Enemy/sprEAxeKill_strip4.png") == "Enemies / death and damage", "Execution sprites stay out of living category")
+	check(categories.category_for("Weapons/sprWeapons_strip35.png") == "Weapons / guns and melee", "Weapon sheets have their own category")
+	game.replace_map(Maps.blank())
+	game.workshop.choose("Combat/Enemy/sprEWalkM16_strip8.png")
+	var previous_props: int = game.workshop.objects().size()
+	game.workshop.place(Vector2(10.5, 10.5) * game.SIZE)
+	check([10, 10] in game.map.enemies and game.workshop.objects().size() == previous_props, "Living sprite placement creates enemy rather than prop")
+	check(Maps.validate(game.map) == "", "Living enemy map validates")
+	game.reset_game()
+	check(game.enemies.back().gun and game.enemies.back().get("appearance", "") == "Combat/Enemy/sprEWalkM16_strip8.png", "Placed enemy uses chosen appearance and gun AI")
+	var weapons = preload("res://scripts/game/enemy_weapons.gd")
+	check(weapons.identify("sprEWalkUnarmed_strip8.png") == "FISTS", "Unarmed enemies punch")
+	check(weapons.identify("sprEWalkBat_strip8.png") == "BAT", "Bat enemies use weapon melee")
+	check(weapons.profile("MELEE").range > weapons.profile("FISTS").range, "Melee weapons reach farther than fists")
+	check(weapons.identify("sprEWalkM16_strip8.png") == "RIFLE" and weapons.identify("sprEWaiterWalkUzi_strip8.png") == "MACHINE_GUN", "Rifle and automatic enemies are distinct")
+	game.projectiles.clear()
+	var shooter: Dictionary = game.enemies.back()
+	game.enemy_attack(shooter, weapons.profile("SHOTGUN"))
+	check(game.projectiles.size() == EnemiesSettings.ENEMY_SHOTGUN_PELLETS, "Shotgun fires configured pellet count")
+	check(not game.projectiles.front().vel.is_equal_approx(game.projectiles.back().vel), "Shotgun pellets fan out")
+	game.projectiles.clear()
+	game.enemy_attack(shooter, weapons.profile("RIFLE"))
+	check(game.projectiles.size() == 1 and game.projectiles[0].damage == EnemiesSettings.ENEMY_RIFLE_DAMAGE, "Rifle projectile carries its damage")
+	check(weapons.profile("MACHINE_GUN").interval < weapons.profile("PISTOL").interval, "Machine gun fires faster than pistol")
+	game.reset_game()
+	game.drops.clear()
+	var victim: Dictionary = game.enemies.back()
+	victim.weapon_kind = "SHOTGUN"
+	victim.gun = true
+	game.kill_enemy(victim)
+	check(game.drops.size() == 1 and game.drops[0].weapon == "SHOTGUN", "Enemy drops actual shotgun")
+	var blood_count: int = game.stains.size()
+	game.kill_enemy(victim)
+	check(game.drops.size() == 1 and game.stains.size() == blood_count, "Repeated kill cannot duplicate drops or blood")
+	game.player = victim.pos
+	game.weapon = "FISTS"
+	game.pickup()
+	check(game.weapon == "SHOTGUN", "Pickup retains weapon identity")
+	game.throw_weapon()
+	check(game.projectiles.back().weapon == "SHOTGUN", "Throw retains weapon identity")
+	game.projectiles.back().life = 0
+	game.update_projectiles(0.01)
+	check(game.drops.back().weapon == "SHOTGUN", "Thrown weapon lands as same weapon")
+	game.health = 1
+	game.damage_player(1)
+	check(game.dead and game.stains.size() > blood_count, "Player death creates persistent blood")
+	var after_death: int = game.stains.size()
+	game.damage_player(1)
+	check(game.stains.size() == after_death, "Dead player cannot bleed repeatedly from same volley")
+	check(weapons.identify("sprEWalkPipe_strip8.png") == "PIPE", "Pipe identity is preserved")
+	check(weapons.identify("sprEWalkKnife_strip8.png") == "KNIFE", "Knife identity is preserved")
+	game.replace_map(Maps.blank())
+	game.reset_game()
+	game.player = game.center([8, 10])
+	var target := {"pos": game.center([10, 10]), "alive": true, "health": 2, "stun": 0.0, "timer": 0.0}
+	game.enemies = [target]
+	game.weapon = "PIPE"
+	game.aim = 0
+	game.throw_weapon()
+	game.update_projectiles(0.1)
+	check(target.stun == WeaponsSettings.STUN_DURATION and target.health == 2, "Thrown pipe stuns without damaging enemy")
+	check(game.projectiles.is_empty() and game.drops.back().weapon == "PIPE", "Thrown pipe becomes recoverable pickup after impact")
+	var drop_position: Vector2 = game.drops.back().pos
+	game.update_drops(0.1)
+	check(game.drops.back().pos != drop_position, "Impact gives dropped weapon physical motion")
+	check(not game.solid(game.drops.back().pos), "Dropped weapon stays out of walls")
+	for kind in ["BAT", "PIPE", "KNIFE"]:
+		game.drops.clear()
+		var melee_enemy := {"pos": game.center([10, 10]), "alive": true, "gun": false, "weapon_kind": kind}
+		game.kill_enemy(melee_enemy)
+		check(game.drops.size() == 1 and game.drops[0].weapon == kind, "Melee enemy drops exact " + kind)
+	var player_weapons = preload("res://scripts/game/player_weapons.gd")
+	for kind in ["BAT", "PIPE", "KNIFE", "CLUB", "NIGHTSTICK", "PISTOL", "SILENCER", "SHOTGUN", "DOUBLE_BARREL", "RIFLE", "MACHINE_GUN"]:
+		game.drops.clear()
+		game.projectiles.clear()
+		game.weapon = "FISTS"
+		game.player = game.center([10, 10])
+		var armed := {"pos": game.player, "alive": true, "gun": player_weapons.is_gun(kind), "weapon_kind": kind}
+		game.kill_enemy(armed)
+		check(game.drops[0].weapon == kind, "Drop preserves " + kind)
+		game.pickup()
+		check(game.weapon == kind, "Pickup preserves " + kind)
+		check(game.art.frames.has(player_weapons.held_sprite(kind)) and game.art.frames.has(player_weapons.held_sprite(kind, true)), "Held and attack sprites exist for " + kind)
+		game.throw_weapon()
+		check(game.projectiles.back().weapon == kind, "Throw preserves " + kind)
+	check(player_weapons.drop_frame("KNIFE") == 5 and player_weapons.drop_frame("PIPE") == 2, "Knife and pipe use inspected atlas frames")
+	game.replace_map(Maps.blank())
+	var molotov_entry: Dictionary = {}
+	for entry in game.workshop.catalog:
+		if entry.get("pickup_kind", "") == "MOLOTOV": molotov_entry = entry; break
+	check(not molotov_entry.is_empty(), "Molotov has a named playable library entry")
+	game.workshop.choose_entry(molotov_entry)
+	game.workshop.place(game.center([8, 10]))
+	check(game.map.objects.back().pickup_kind == "MOLOTOV", "Editor places usable Molotov")
+	check(Maps.validate(Maps.normalize(JSON.parse_string(JSON.stringify(game.map)))) == "", "Weapon pickups survive validated map save/load")
+	game.reset_game()
+	game.player = game.center([8, 10])
+	game.weapon = "FISTS"
+	game.pickup()
+	check(game.weapon == "MOLOTOV", "Molotov pickup works")
+	game.aim = 0
+	game.throw_weapon()
+	check(game.weapon == "FISTS", "Molotov is consumed on throw")
+	game.projectiles.back().life = 0
+	game.update_projectiles(0.01)
+	check(game.fires.size() == 1 and game.drops.is_empty(), "Molotov shatters into fire instead of reusable pickup")
+	game.player = game.center([20, 20])
+	var burning := {"pos": game.fires[0].pos, "alive": true, "health": 10, "alert": false, "target": Vector2.ZERO}
+	game.enemies = [burning]
+	game.update_fires(0.01)
+	check(burning.health == 10 - WeaponsSettings.MOLOTOV_DAMAGE, "Fire damages enemy")
+	var remaining_health: int = burning.health
+	game.update_fires(0.01)
+	check(burning.health == remaining_health, "Fire damage respects tick interval")
+	game.player = game.fires[0].pos
+	game.health = 10
+	game.fires[0].tick = 0.0
+	game.update_fires(0.01)
+	check(game.health == 10 - WeaponsSettings.MOLOTOV_DAMAGE, "Fire damages player too")
+	game.player = game.center([20, 20])
+	game.fires[0].pos = game.center([8, 10])
+	burning.pos = game.center([10, 10])
+	for y in range(1, Maps.HEIGHT - 1): game.map.cells[y * Maps.WIDTH + 9] = 2
+	remaining_health = burning.health
+	game.fires[0].tick = 0.0
+	game.update_fires(0.01)
+	check(burning.health == remaining_health, "Wall blocks fire damage to nearby enemy")
+	game.fires[0].life = 0.01
+	game.update_fires(0.02)
+	check(game.fires.is_empty(), "Fire expires")
+	game.reset_game()
+	check(game.fires.is_empty() and game.drops.size() == 1, "Restart restores placed pickup and clears fire")
 	game.queue_free()
 	print("Layouts without usable geometry: %d / %d" % [rejected_layouts, game.workshop.room_layouts.size()])
 	print("Smoke checks completed: %d failures" % failures)

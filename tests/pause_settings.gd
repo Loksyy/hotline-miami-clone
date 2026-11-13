@@ -1,4 +1,6 @@
 extends SceneTree
+const EditorVisualsSettings = preload("res://scripts/settings/editor_visuals_settings.gd")
+const PlayerSettings = preload("res://scripts/settings/player_settings.gd")
 const Game = preload("res://scripts/game/main.gd")
 const Preferences = preload("res://scripts/settings/runtime_settings.gd")
 const Maps = preload("res://scripts/maps/map_data.gd")
@@ -15,6 +17,18 @@ func run() -> void:
 	root.add_child(game)
 	game.preferences.storage_path = "user://pause_settings_test.cfg"
 	game.sound.muted = true
+	var gear = game.workshop.find_child("SettingsButton", true, false)
+	check(gear != null, "Toolbar has settings gear")
+	gear.pressed.emit()
+	check(paused and game.pause_menu.settings_page.visible and not game.pause_menu.home.visible, "Gear opens settings directly and pauses")
+	if "--preview" in OS.get_cmdline_user_args():
+		for i in 4: await process_frame
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("res://.godot/settings-menu.png")
+	game.pause_menu.close_menu()
+	game.preferences.editor_grid = false
+	game.preferences.zoom_sensitivity = 1.5
+	game.preferences.snap_objects = false
 	game.toggle_mode()
 	check(not game.editing, "Playtest starts before pause")
 	game.weapon = "PISTOL"
@@ -51,6 +65,12 @@ func run() -> void:
 	game.pause_menu.open_menu()
 	check(not game.painting and game.workshop.mode == "select", "Opening menu cancels pending editor gestures")
 	game.pause_menu.close_menu()
+	game.workshop.snap_input.button_pressed = not game.workshop.snap_input.button_pressed
+	check(game.preferences.snap_objects == game.workshop.snap_input.button_pressed, "Inspector snap updates preference")
+	game.pause_menu.open_settings()
+	check(game.pause_menu.preference_toggles.snap_objects.button_pressed == game.preferences.snap_objects, "Settings refresh snapping on reopen")
+	game.pause_menu.close_menu()
+	game.preferences.snap_objects = false
 	game.preferences.volume = 0.35
 	game.preferences.show_fps = false
 	game.preferences.frame_limit = 60
@@ -59,6 +79,7 @@ func run() -> void:
 	restored.storage_path = game.preferences.storage_path
 	restored.load_settings()
 	check(is_equal_approx(restored.volume, 0.35) and not restored.show_fps and restored.frame_limit == 60, "Settings persist and reload")
+	check(not restored.editor_grid and not restored.snap_objects and restored.zoom_sensitivity == 1.5, "Editor preferences persist")
 	DirAccess.remove_absolute(game.preferences.storage_path)
 	var cached := Maps.starter()
 	var original: int = cached.cells[0]
@@ -66,13 +87,21 @@ func run() -> void:
 	check(Maps.starter().cells[0] == original, "Editing a cached layout result cannot corrupt its template")
 	game.sound.muted = false
 	for i in 24: game.sound.play("shot")
-	check(game.sound.get_child_count() == game.S.MAX_AUDIO_VOICES, "Rapid sounds reuse bounded voices")
+	check(game.sound.get_child_count() == EditorVisualsSettings.MAX_AUDIO_VOICES, "Rapid sounds reuse bounded voices")
 	game.toggle_mode()
 	check(game.workshop.play_lab_panel.visible and not game.workshop.window.visible, "Playtest replaces editor sidebar with Developer Lab")
 	check(not paused, "Sidebar tuning does not pause the game")
 	game.toggle_mode()
 	check(not game.workshop.play_lab_panel.visible and game.workshop.window.visible, "Returning to editor restores its sidebar")
 	game.toggle_mode()
+	var old_width := game.MAP_VIEW.size.x
+	var old_zoom := game.camera_zoom()
+	game.workshop.sidebar_button.pressed.emit()
+	check(game.MAP_VIEW.size.x > old_width and game.MAP_VIEW.end.x == 1888, "Hiding sidebar expands playable viewport")
+	check(game.screen_to_world(game.MAP_VIEW.get_center()).is_equal_approx(game.camera_center()), "Expanded viewport mouse coordinates stay centered on camera")
+	check(game.camera_zoom() == old_zoom, "Wider viewport keeps world proportions")
+	game.workshop.sidebar_button.pressed.emit()
+	check(game.MAP_VIEW.size.x == old_width, "Showing sidebar restores viewport")
 	var normal_zoom := game.camera_zoom()
 	var cursor := game.MAP_VIEW.get_center() + Vector2(game.MAP_VIEW.size.x * 0.4, 0)
 	game.update_look_ahead(0.1, true, cursor)
@@ -82,7 +111,7 @@ func run() -> void:
 	game.update_look_ahead(0.1, false, cursor)
 	check(game.look_offset.length() < previous_offset, "Release returns camera toward player")
 	game.update_look_ahead(10.0, true, cursor)
-	check(game.look_offset.length() <= game.S.SHIFT_LOOK_DISTANCE, "Look-ahead stays bounded")
+	check(game.look_offset.length() <= PlayerSettings.SHIFT_LOOK_DISTANCE, "Look-ahead stays bounded")
 	game.update_look_ahead(10.0, true, Vector2(1500, 500))
 	check(game.look_offset.length() < 0.01, "Sidebar interaction recenters look-ahead")
 	game.reset_game()

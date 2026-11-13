@@ -38,6 +38,10 @@ func run() -> void:
 	for i in 3: await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://.godot/play-lab-preview.png")
+	game.workshop.sidebar_button.pressed.emit()
+	for i in 3: await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://.godot/wide-play-preview.png")
 	game.queue_free()
 	await process_frame
 	quit()

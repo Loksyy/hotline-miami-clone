@@ -24,8 +24,62 @@ static func demo() -> Dictionary:
 		map.cells[cell[1] * WIDTH + cell[0]] = 6
 	return map
 
+static func small_blank() -> Dictionary:
+	var map := blank()
+	map.name = "New room / 30 x 30"
+	map.cells.fill(0)
+	var origin := Vector2i((WIDTH - 30) / 2, (HEIGHT - 30) / 2)
+	for y in 30:
+		for x in 30:
+			map.cells[(origin.y + y) * WIDTH + origin.x + x] = 2 if x in [0, 29] or y in [0, 29] else 1
+	map.cells[(origin.y + 29) * WIDTH + origin.x + 15] = 5
+	map.spawn = [origin.x + 15, origin.y + 15]
+	map.exit = [origin.x + 15, origin.y + 28]
+	ensure_floor_layer(map)
+	return map
+
 static func starter() -> Dictionary:
-	return from_layout(S.DEFAULT_LAYOUT_ASSET, S.DEFAULT_LAYOUT_FRAME, S.DEFAULT_LAYOUT_FRAMES)
+	# Compact 40 x 28 arena inside the larger editable canvas.
+	var map := blank()
+	map.name = "TEST ARENA / Weapons & enemies"
+	map.cells.fill(0)
+	var middle := Vector2i(WIDTH / 2, HEIGHT / 2)
+	var bounds := Rect2i(middle - Vector2i(20, 14), Vector2i(40, 28))
+	for y in range(bounds.position.y, bounds.end.y):
+		for x in range(bounds.position.x, bounds.end.x):
+			var edge := x == bounds.position.x or x == bounds.end.x - 1 or y == bounds.position.y or y == bounds.end.y - 1
+			map.cells[y * WIDTH + x] = 2 if edge else 1
+	map.spawn = [middle.x, middle.y]
+	map.exit = [bounds.end.x - 3, bounds.end.y - 3]
+	map.enemy_styles = {}
+	var appearances = preload("res://scripts/rendering/enemy_appearance.gd")
+	for i in appearances.ARENA_ENEMIES.size():
+		var cell := [middle.x - 16 + (i % 9) * 4, middle.y - 10 + (i / 9) * 4]
+		map.enemies.append(cell)
+		map.enemy_styles["%d,%d" % [cell[0], cell[1]]] = appearances.ROOT + appearances.ARENA_ENEMIES[i]
+	var weapons = preload("res://scripts/game/player_weapons.gd")
+	var guns: Array[String] = []
+	for kind in weapons.PICKUPS:
+		if weapons.is_gun(kind): guns.append(kind)
+	var left := int(WIDTH / 2) - (guns.size() - 1) * 2
+	for i in guns.size():
+		var point := (Vector2(left + i * 4, HEIGHT / 2 + 11) + Vector2.ONE * 0.5) * TILE
+		var item := prop(weapons.pickup_asset(guns[i]), point, 1.0, 1, false, weapons.drop_frame(guns[i]))
+		item.pickup_kind = guns[i]
+		map.objects.append(item)
+	# Separate melee rows keep every pickup accessible without growing the arena.
+	var melee: Array[String] = []
+	for kind in weapons.PICKUPS:
+		if weapons.is_melee(kind): melee.append(kind)
+	for i in melee.size():
+		var row := int(i / 9)
+		var column := i % 9
+		var point := (Vector2(middle.x - 16 + column * 4, middle.y + 2 + row * 3) + Vector2.ONE * 0.5) * TILE
+		var item := prop(weapons.pickup_asset(melee[i]), point, 1.0, 1, false, weapons.drop_frame(melee[i]))
+		item.pickup_kind = melee[i]
+		map.objects.append(item)
+	ensure_floor_layer(map)
+	return map
 
 static func ensure_floor_layer(map: Dictionary) -> void:
 	if map.has("floors"): return
@@ -99,8 +153,8 @@ static func validate(value: Variant) -> String:
 	for cell in value.cells:
 		if not (cell is int or cell is float) or cell != int(cell) or int(cell) < 0 or int(cell) > 6:
 			return "Invalid tile type."
-	if not value.enemies is Array or value.enemies.size() > S.MAX_ENEMIES:
-		return "Invalid enemy list (maximum %d)." % S.MAX_ENEMIES
+	if not value.enemies is Array or value.enemies.size() > EditorVisualsSettings.MAX_ENEMIES:
+		return "Invalid enemy list (maximum %d)." % EditorVisualsSettings.MAX_ENEMIES
 	var occupied: Array = []
 	for cell in [value.spawn, value.exit] + value.enemies:
 		if not _valid_cell(cell):
@@ -114,10 +168,45 @@ static func validate(value: Variant) -> String:
 		if not value.floors is Array or value.floors.size() != WIDTH * HEIGHT: return "Invalid floor layer."
 		for tile in value.floors:
 			if not numeric(tile) or tile != int(tile) or int(tile) not in [0, 1, 3, 4]: return "Invalid floor material."
+	if value.has("enemy_options"):
+		if not value.enemy_options is Dictionary: return "Invalid enemy settings."
+		for key in value.enemy_options:
+			var options: Variant = value.enemy_options[key]
+			if not key is String or not options is Dictionary: return "Invalid enemy settings."
+			if options.has("active") and not options.active is bool: return "Invalid enemy active setting."
+			for field in ["health", "damage"]:
+				if options.has(field) and (not numeric(options[field]) or not is_finite(float(options[field])) or options[field] != int(options[field]) or options[field] < (1 if field == "health" else 0) or options[field] > 10000): return "Invalid enemy combat value."
+	if value.has("enemy_styles"):
+		if not value.enemy_styles is Dictionary: return "Invalid enemy appearances."
+		for key in value.enemy_styles:
+			var asset: Variant = value.enemy_styles[key]
+			if not key is String or not asset is String or ".." in asset: return "Invalid enemy appearance."
+			if preload("res://scripts/editor/asset_categories.gd").category_for(asset) != "Enemies that are alive" or not ResourceLoader.exists("res://HLM1 Files/" + asset): return "Invalid living enemy texture."
+	if value.has("floor_clips"):
+		if not value.floor_clips is Dictionary: return "Invalid floor outlines."
+		for key in value.floor_clips:
+			if not key is String or not key.is_valid_int() or int(key) < 0 or int(key) >= WIDTH * HEIGHT: return "Invalid floor outline cell."
+			var rect: Variant = value.floor_clips[key]
+			if not rect is Array or rect.size() != 4: return "Invalid floor outline."
+			for component in rect:
+				if not numeric(component) or component < 0 or component > 1: return "Invalid floor outline bounds."
+			if rect[0] + rect[2] > 1.001 or rect[1] + rect[3] > 1.001: return "Floor outline exceeds its cell."
+	if value.has("floor_shapes"):
+		if not value.floor_shapes is Dictionary: return "Invalid floor shapes."
+		for key in value.floor_shapes:
+			if not key is String or not key.is_valid_int() or int(key) < 0 or int(key) >= WIDTH * HEIGHT: return "Invalid floor shape cell."
+			var pieces: Variant = value.floor_shapes[key]
+			if not pieces is Array or pieces.size() > 4: return "Invalid floor shape pieces."
+			for piece in pieces:
+				if not piece is Array or piece.size() != 4: return "Invalid floor shape."
+				for component in piece:
+					if not numeric(component) or component < 0 or component > 1: return "Invalid floor shape bounds."
+				if piece[0] + piece[2] > 1.001 or piece[1] + piece[3] > 1.001: return "Floor shape exceeds its cell."
 	var props: Variant = value.get("objects", [])
-	if not props is Array or props.size() > S.MAX_MAP_OBJECTS: return "Invalid object list."
+	if not props is Array or props.size() > EditorVisualsSettings.MAX_MAP_OBJECTS: return "Invalid object list."
 	for item in props:
 		if not item is Dictionary: return "Invalid object."
+		if item.has("pickup_kind") and not preload("res://scripts/game/player_weapons.gd").SOURCES.has(item.pickup_kind): return "Unknown weapon pickup."
 		for key in ["asset", "pos", "frame", "scale", "rotation", "layer", "animated", "solid", "crop"]:
 			if not item.has(key): return "Object missing field: " + key
 		if not item.asset is String or item.asset.contains("..") or item.asset.begins_with("/") or item.asset.contains(":") or item.asset.contains("\\") or not item.asset.ends_with(".png"):

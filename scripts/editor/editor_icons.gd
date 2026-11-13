@@ -2,6 +2,12 @@ extends RefCounted
 ## Small vector icons, drawn locally; no font glyph or asset import dependency.
 static var cache: Dictionary = {}
 const PATHS := {
+ "exit": "M10 3 H3 V21 H10 M8 12 H22 M17 7 L22 12 L17 17",
+ "gear": "M9 3 H15 L16 6 L19 7 L22 10 V14 L19 15 L18 18 L15 19 L14 22 H10 L9 19 L6 18 L5 15 L2 14 V10 L5 9 L6 6 Z M16 12 A4 4 0 1 1 8 12 A4 4 0 1 1 16 12",
+ "sidebar": "M3 3 H21 V21 H3 Z M15 3 V21",
+ "next": "M13 4 L21 12 L13 20 M3 12 H21",
+ "settings": "M3 6 H21 M3 12 H21 M3 18 H21 M8 3 V9 M16 9 V15 M10 15 V21",
+ "star": "M12 2 L15 8 L22 9 L17 14 L18 21 L12 18 L6 21 L7 14 L2 9 L9 8 Z",
  "select": "M5 3 L19 12 L12 14 L9 21 Z",
  "stamp": "M8 14 V10 C4 2 20 2 16 10 V14 M5 14 H19 V19 H5 Z M4 22 H20",
  "library": "M3 3 H10 V10 H3 Z M14 3 H21 V10 H14 Z M3 14 H10 V21 H3 Z M14 14 H21 V21 H14 Z",

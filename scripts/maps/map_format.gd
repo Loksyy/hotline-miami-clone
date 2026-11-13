@@ -1,9 +1,10 @@
 extends RefCounted
+const EditorVisualsSettings = preload("res://scripts/settings/editor_visuals_settings.gd")
+const WorldSettings = preload("res://scripts/settings/world_settings.gd")
 ## Shared map dimensions, tile types and constructors. No editor dependencies.
-const S = preload("res://scripts/settings/game_settings.gd")
-const WIDTH := S.MAP_WIDTH_CELLS
-const HEIGHT := S.MAP_HEIGHT_CELLS
-const TILE := S.CELL_SIZE
+const WIDTH := WorldSettings.MAP_WIDTH_CELLS
+const HEIGHT := WorldSettings.MAP_HEIGHT_CELLS
+const TILE := WorldSettings.CELL_SIZE
 
 static func floor_tile(tile: int) -> bool:
 	return tile in [1, 3, 4]
@@ -17,6 +18,6 @@ static func blank() -> Dictionary:
 
 static func prop(asset: String, position: Vector2, scale: float = 1.0, layer: int = 1, solid: bool = true, frame: int = 0) -> Dictionary:
 	return {"asset": asset, "pos": [position.x, position.y], "frame": frame,
-		"scale": S.PROP_SCALE_OVERRIDES.get(asset, scale), "rotation": 0.0, "layer": layer, "animated": false,
+		"scale": EditorVisualsSettings.PROP_SCALE_OVERRIDES.get(asset, scale), "rotation": 0.0, "layer": layer, "animated": false,
 		"solid": solid, "crop": [0, 0, 0, 0]}
 

@@ -1,5 +1,6 @@
 extends SceneTree
 ## Run after adding/removing PNGs: godot --headless --path . --script tools/rebuild_asset_catalog.gd
+const Categories = preload("res://scripts/editor/asset_categories.gd")
 var entries: Array = []
 var pattern := RegEx.new()
 
@@ -26,4 +27,4 @@ func scan(root_path: String, relative: String) -> void:
 		if image == null: continue
 		var result := pattern.search(filename.get_basename())
 		var frames := int(result.get_string(1)) if result else 1
-		entries.append({"path": relative + filename, "category": relative.get_slice("/", 0), "name": filename.get_basename(), "width": image.get_width(), "height": image.get_height(), "frames": frames})
+		entries.append({"path": relative + filename, "category": Categories.category_for(relative + filename), "name": filename.get_basename(), "width": image.get_width(), "height": image.get_height(), "frames": frames})

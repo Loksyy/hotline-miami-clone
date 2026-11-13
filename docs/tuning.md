@@ -1,8 +1,20 @@
 # Tuning Project Gagugaga
 
-For live changes, open **Esc ? Developer Lab**. Search by name, adjust a field, then resume. Text/list fields apply with Enter. **Save tuning** writes `user://developer_tuning.cfg`; saved overrides take priority over source defaults. **Reset to source defaults**, then **Save tuning**, restores the source values persistently. Starting health/ammo and enemy composition need a fresh playtest; layout settings affect new layouts.
+For live changes, open **Esc ? Developer Lab**. Choose a category or search across all categories (including gun names). **Modified only** filters changes from source defaults. Gun profiles use labeled numeric fields; individual Reset buttons affect only their setting. Adjust a field, then resume. Text/list fields apply with Enter. **Save tuning** writes `user://developer_tuning.cfg`; saved overrides take priority over source defaults. **Reset to source defaults**, then **Save tuning**, restores the source values persistently. Starting health/ammo and enemy composition need a fresh playtest; layout settings affect new layouts.
 
-To change source defaults, edit [game_settings.gd](../scripts/settings/game_settings.gd), then stop and run the game again. Distances are world pixels, speeds are pixels/second, and times are seconds unless a comment says otherwise. Existing values are preserved; the extra settings expose behavior that previously lived in code.
+To change source defaults, edit the appropriate file below, then stop and run the game again. Distances are world pixels, speeds are pixels/second, and times are seconds unless a comment says otherwise. Existing values are preserved; the extra settings expose behavior that previously lived in code.
+
+| Settings file | What to change |
+| --- | --- |
+| [player_settings.gd](../scripts/settings/player_settings.gd) | Movement, health, pickup range, camera and Shift look |
+| [weapons_settings.gd](../scripts/settings/weapons_settings.gd) | Ammo, damage, fire rate, reload, melee, drops and Molotov |
+| [enemies_settings.gd](../scripts/settings/enemies_settings.gd) | Enemy movement, detection, health, attacks and loot |
+| [world_settings.gd](../scripts/settings/world_settings.gd) | Layout generation, walls, collision accuracy and scoring |
+| [editor_visuals_settings.gd](../scripts/settings/editor_visuals_settings.gd) | Editor, artwork sizes, effects, audio and display defaults |
+
+[game_settings.gd](../scripts/settings/game_settings.gd) is a small registry for Developer Lab. Gameplay imports the grouped settings directly; there are no forwarding properties or duplicate tuning values. Existing saved overrides still apply. Shared damage/death behavior remains in gameplay code.
+
+Gun arrays are `[magazine, damage, range, fire interval, reload seconds, pellets, spread degrees]`. `WEAPON_STAT_OVERRIDES` takes priority over `PLAYER_GUN_PROFILES`; pistol defaults use the individual settings at the top of the weapons file. Lower intervals fire faster.
 
 | Change | Settings to search for |
 | --- | --- |
